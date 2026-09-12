@@ -31,7 +31,8 @@ import Data.Ratio
 import Flint.Ball
 import Flint.SL2
 import Flint.Z
-import Modular.CP (Summary(..), Options(..), prettyName)
+import Modular.CP (Record(..), Summary(..), Options(..), prettyName, parseName)
+import Modular.Identify (identify)
 import Modular.Disk
 import Modular.Domain
 import Modular.Generators (examples, parseGenerators)
@@ -267,6 +268,8 @@ css = unlines
   , "svg{max-width:100%;height:auto;border:1px solid #d7d7de;border-radius:6px;background:#fff}"
   , ".mat{font-family:ui-monospace,Menlo,monospace;font-size:13px}"
   , ".warn{color:#b00} .ok{color:#080} .muted{color:#666}"
+  , "table.cp td:first-child{background:#d5e6f7;color:#123;text-align:center;padding:4px 8px;border-radius:3px} table.cp th{background:#c9e8b8;padding:4px 8px}"
+  , "table.cp.wide td:first-child{background:none;text-align:left} table.cp.wide td{border-bottom:1px solid #eee;white-space:nowrap} .scrollx{overflow-x:auto;position:relative} .layout>*{min-width:0}"
   , "@media (max-width:1150px){.layout{grid-template-columns:1fr}}"
   ]
 
@@ -306,7 +309,7 @@ renderPage cx = unlines
   , "<title>Fundamental domains</title><style>" ++ css ++ "</style>"
   , katexHead
   , "</head><body>"
-  , "<header><h1>Fundamental domains of congruence subgroups of SL₂(ℤ)</h1><span>after Helena A. Verrill's Fundamental Domain Drawer · PSL₂(ℤ) in FLINT · exact arcs · arb vertices</span></header>"
+  , "<header><h1>Fundamental domains of congruence subgroups of SL₂(ℤ)</h1></header>"
   , "<div class=\"layout\">"
   , el "div" [("class", "panel")] (leftPanel cx p)
   , el "div" [("id", "plot")] (either errorBox renderSvg scene)
@@ -328,7 +331,7 @@ renderPage cx = unlines
 modeSlider :: Params -> String
 modeSlider p = el "div" [("class", "slider")] $ concat
   [ el "a" [("class", if pApp p == k then "on" else ""), ("href", href (fresh p) { pApp = k })] (esc label)
-  | (k, label) <- [(1, "1 · families"), (2, "2 · tables"), (3, "3 · generators")] ]
+  | (k, label) <- [(1, "families"), (2, "tables"), (3, "by generators")] ]
 
 leftPanel :: Context -> Params -> String
 leftPanel cx p = concat
@@ -532,11 +535,11 @@ svgHref p = "svg?" ++ toQuery p
 
 rightPanel :: Context -> Params -> Either String Built -> String
 rightPanel cx p built = case pApp p of
-  2 -> either (const (el "p" [("class", "muted")] "Choose a group in the pills on the left, or type its name.")) (infoPanel p) built
-  3 -> certificate cx p ++ either (const "") (infoPanel p) built
+  2 -> either (const (el "p" [("class", "muted")] "Choose a group in the pills on the left, or type its name.")) (infoPanel cx p) built
+  3 -> certificate cx p ++ either (const "") (infoPanel cx p) built
   _ -> case pMode p of
          TriMode    -> explorer p
-         DomainMode -> either (const "") (infoPanel p) built
+         DomainMode -> either (const "") (infoPanel cx p) built
 
 -- | Mode 3: what the enumeration and Hsu's criterion found.
 certificate :: Context -> Params -> String
@@ -549,23 +552,23 @@ certificate cx p = case cxGroup cx of
         Just (lv, Nothing)  -> el "p" [("class", "ok")] ("Congruence: the group contains Γ(" ++ show lv ++ "). Hsu's relations for level " ++ show lv ++ " hold in the coset action.")
         Just (lv, Just why) -> el "p" [("class", "warn")] ("Not congruence: Hsu's relation " ++ esc why ++ " fails in the coset action, so the group does not contain Γ(" ++ show lv ++ "), and by Wohlfahrt's theorem contains no Γ(N) at all.")
         Nothing -> ""
-    , el "p" [("class", "muted")] "The coset action of PSL₂(ℤ) = ⟨S⟩ * ⟨R⟩ on the subgroup's cosets is found by tracing the generators as loops and closing the table (Todd–Coxeter); the domain is drawn from that action, and the level below is the generalised level, the lcm of the cusp widths."
+    , el "p" [("class", "muted")] "The action of PSL₂(ℤ) on the cosets of the group is computed from the generators, and Hsu's criterion is applied to it. The level shown is the lcm of the cusp widths, which is the level whenever the group is congruence."
     ]
 
--- | The invariants and the selected triangle.
-infoPanel :: Params -> Built -> String
-infoPanel p (Built dom inf) = concat
-  [ el "h2" [] (esc (subgroupName sg))
-  , el "table" [("class", "kv")] $ concat
-      [ row "level" (show (sgLevel sg) ++ (case sgVerdict sg of { Just _ -> " (generalised)"; Nothing -> "" }))
-      , row "index" (show n ++ if containsMinusOne sg then "" else " (projective; " ++ show (2 * n) ++ " in SL₂(ℤ), as −I ∉ Γ)")
-      , row "genus" (show (iGenus inf))
-      , row "cusps" (show (length (iCusps inf)))
-      , row "elliptic" ("order 2: " ++ show (iE2 inf) ++ ", order 3: " ++ show (iE3 inf))
-      ]
-  , if iEuler inf then "" else el "p" [("class", "warn")] "Euler characteristic is not integral — the table is inconsistent."
+-- | The right panel: the group as an entry of the tables when it is one
+-- (the tables' own format), the computed invariants otherwise, and the
+-- selected triangle.
+infoPanel :: Context -> Params -> Built -> String
+infoPanel cx p (Built dom inf) = concat
+  [ case (pApp p, cxRecord cx, found) of
+      (2, Just r, _) -> el "h2" [] (esc (tableName r)) ++ cpTable p r
+                        ++ el "p" [("class", "muted")] (el "a" [("href", "csg?level=" ++ show (rLevel r))] ("All groups of level " ++ show (rLevel r)) ++ ". Entries are up to conjugacy in PGL₂(ℤ); the matrix generators define one representative.")
+      (_, _, Just r) -> el "h2" [] (esc (subgroupName sg))
+                        ++ el "p" [] ("In the tables: " ++ el "a" [("href", href (toGroup p (rName r)))] (esc (tableName r)) ++ ".")
+                        ++ cpTable p r
+      _              -> el "h2" [] (esc (subgroupName sg)) ++ computed ++ el "p" [("class", "muted")] (esc whyNot)
   , mismatch
-  , el "h2" [] "Cusps and widths"
+  , el "h2" [] "Cusps in the picture"
   , el "div" [("class", "cusps")] $ unwords
       [ el "a" [("href", href (goto (cValue c) (pScale p))), ("title", "centre on this cusp")]
               (esc (showQI (cValue c)) ++ el "span" [("class", "muted")] ("·" ++ show (cWidth c)))
@@ -577,7 +580,22 @@ infoPanel p (Built dom inf) = concat
   where
     sg = dGroup dom
     n  = size dom
-    row k v = el "tr" [] (el "td" [] (esc k) ++ el "td" [] (esc v))
+    row k v = el "tr" [] (el "td" [] (esc k) ++ el "td" [] v)
+    found | pApp p == 2 = Nothing
+          | otherwise   = identify dom (cxCandidates cx)
+    computed = el "table" [("class", "kv")] $ concat
+      [ row "level" (esc (show (sgLevel sg) ++ (case sgVerdict sg of { Just _ -> " (generalised)"; Nothing -> "" })))
+      , row "index" (esc (show n ++ if containsMinusOne sg then "" else " (projective; " ++ show (2 * n) ++ " in SL₂(ℤ), as −I ∉ Γ)"))
+      , row "genus" (show (iGenus inf))
+      , row "cusps" (esc (inlineTex (partitionTex (map cWidth (iCusps inf)))))
+      , row "c₂" (show (iE2 inf))
+      , row "c₃" (show (iE3 inf))
+      ]
+    whyNot
+      | Just (_, Just _) <- sgVerdict sg = "Not a congruence subgroup, so not in the tables."
+      | iGenus inf > 24 = "Genus " ++ show (iGenus inf) ++ " is beyond the tables, which stop at 24."
+      | null (cxCandidates cx) = "No entry of the tables has this genus, level, index and cusp widths."
+      | otherwise = "Not conjugate to any entry of the tables with these invariants."
     -- the source's own figures are shown only if they disagree
     mismatch = case sgExpect sg of
       Nothing -> ""
@@ -587,16 +605,9 @@ infoPanel p (Built dom inf) = concat
             diffs  = [ k ++ ": " ++ a ++ " here, " ++ b ++ " in " ++ exSource ex
                      | (k, a, b) <- [ ("index", show n, show (exIndex ex)), ("genus", show (iGenus inf), show (exGenus ex))
                                     , ("cusp widths", unwords (map show ours), unwords (map show theirs))
-                                    , ("e₂", show (iE2 inf), show (exE2 ex)), ("e₃", show (iE3 inf), show (exE3 ex)) ]
+                                    , ("c₂", show (iE2 inf), show (exE2 ex)), ("c₃", show (iE3 inf), show (exE3 ex)) ]
                      , a /= b ]
-            hBad = case sgOrderH sg of
-                     Just h | h * n /= sl2Order (sgLevel sg) -> ["|⟨generators, −I⟩| · index ≠ |SL₂(ℤ/N)|"]
-                     _ -> []
-        in concat [ el "p" [("class", "warn")] (esc d) | d <- diffs ++ hBad ]
-           ++ (case sgOrderH sg of
-                 Just _  -> el "p" [("class", "muted")] ("From the tables, up to conjugacy in PGL₂(ℤ): the record's generators define one representative, which need not be the classical group of the same name. "
-                                                        ++ el "a" [("href", "csg?level=" ++ show (sgLevel sg))] ("All groups of level " ++ show (sgLevel sg) ++ "."))
-                 Nothing -> "")
+        in concat [ el "p" [("class", "warn")] (esc d) | d <- diffs ]
     sortDesc = reverse . sortOn id
     goto q sc = case q of
       Fin x -> p { pCx = x, pScale = sc }
@@ -605,7 +616,7 @@ infoPanel p (Built dom inf) = concat
       [ el "h2" [] ("Triangle #" ++ show i)
       , el "p" [] (esc (inlineTex (texMat g ++ " = " ++ texWord g)))
       , el "table" [("class", "kv")] $ concat $
-          row "cusp" (showQI (cusp g)) :
+          row "cusp" (esc (showQI (cusp g))) :
           [ el "tr" [] (el "td" [] (esc (sideName gen)) ++ el "td" [] (pair gen)) | gen <- gens ]
       , el "p" [] $ btn (href (goto (cusp g) (pScale p))) "centre" ++ btn (href zoomTo) "zoom to"
                   ++ (if pApp p == 1 then btn (href p { pMode = TriMode, pMats = [g] }) "explore" else "")
@@ -620,6 +631,51 @@ infoPanel p (Built dom inf) = concat
         zoomTo = let (lo, hi) = xExtent g
                      sc = (fromIntegral (pW p) * 2 / 5) / max (1 % 1000000000) (hi - lo)
                  in p { pCx = (lo + hi) / 2, pScale = sc }
+
+-- The tables' format --------------------------------------------------------------
+
+-- | A link to an entry of the tables, drawn afresh and fitted to the view.
+toGroup :: Params -> String -> Params
+toGroup p nm = (fresh p) { pApp = 2, pDb = Just nm, pScale = 50, pCx = 0, pAuto = True }
+
+-- | @13A²⁴@: level, label, genus, as in the tables.
+tableName :: Record -> String
+tableName r = rName r ++ maybe "" (\t -> " = " ++ prettyName t) (rSpecial r)
+
+nameTex :: String -> String
+nameTex nm = case parseName nm of
+  Just (lv, lab, gen) -> show lv ++ "\\mathrm{" ++ lab ++ "}^{" ++ show gen ++ "}"
+  Nothing -> "\\mathrm{" ++ nm ++ "}"
+
+-- | Cusp widths and Galois orbits in the tables' partition notation: @13^{42}@.
+partitionTex :: [Int] -> String
+partitionTex [] = "-"
+partitionTex xs = intercalate "\\," [ show v ++ "^{" ++ show (length grp) ++ "}" | grp@(v : _) <- groupRuns (sortOn id xs) ]
+  where
+    groupRuns [] = []
+    groupRuns (y : ys) = let (same, rest) = span (== y) ys in (y : same) : groupRuns rest
+
+-- | One entry of the tables, in their columns, as a key–value table.
+cpTable :: Params -> Record -> String
+cpTable p r = el "table" [("class", "kv cp")] $ concat
+  [ row "Name" (esc (inlineTex (nameTex (rName r))) ++ maybe "" (\t -> "  " ++ esc (prettyName t)) (rSpecial r))
+  , row "Index" (show (rIndex r))
+  , row "con" (show (rCon r))
+  , row "len" (show (rLen r))
+  , row "c₂" (show (length (filter (== 1) (rC2 r))))
+  , row "c₃" (show (length (filter (== 1) (rC3 r))))
+  , row "Cusps" (esc (inlineTex (partitionTex (rCusps r))))
+  , row "Gal" (esc (inlineTex (partitionTex (rGal r))))
+  , row "Supergroups" (links (rSupers r))
+  , row "Subgroups" (links (rSubs r))
+  , row "Matrix generators" (if null (rMatGens r) then "—" else
+      esc (inlineTex (intercalate ",\\ " [ "\\begin{pmatrix}" ++ show a ++ "&" ++ show b ++ "\\\\" ++ show c ++ "&" ++ show d ++ "\\end{pmatrix}" | (a, b, c, d) <- rMatGens r ]
+                     ++ "\\pmod{" ++ show (rLevel r) ++ "}")))
+  ]
+  where
+    row k v = el "tr" [] (el "td" [] (esc k) ++ el "td" [] v)
+    links [] = "—"
+    links ns = intercalate " " [ el "a" [("href", href (toGroup p nm))] (esc (inlineTex (nameTex nm))) | nm <- ns ]
 
 -- | The right panel in explorer mode: one matrix, multiplied by generators.
 explorer :: Params -> String
@@ -655,24 +711,32 @@ explorer p = concat
       Fin x -> p { pCx = x }
       Inf   -> p { pCx = fromInteger pb }
 
--- | The listing of every group of one level in the tables.
+-- | The listing of every group of one level, in the tables' own columns.
 renderLevel :: Int -> [Summary] -> String
 renderLevel lv sms = unlines
   [ "<!doctype html>"
-  , "<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Congruence subgroups of level " ++ show lv ++ "</title><style>" ++ css ++ "</style></head><body>"
-  , "<header><h1>Cummins–Pauli: congruence subgroups of level " ++ show lv ++ "</h1><span>" ++ show (length sms) ++ " groups of genus ≤ 24</span></header>"
+  , "<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Congruence subgroups of level " ++ show lv ++ "</title><style>" ++ css ++ "</style>"
+  , katexHead
+  , "</head><body>"
+  , "<header><h1>Congruence subgroups of PSL₂(ℤ) of level " ++ show lv ++ "</h1></header>"
   , el "div" [("class", "layout"), ("style", "grid-template-columns:1fr")] $ el "div" [("class", "panel")] $
-      el "p" [] (el "a" [("href", "?app=2")] "← back") ++
-      el "table" [("class", "kv")] (concat $
-        el "tr" [] (concatMap (el "th" []) ["name", "classical", "index", "genus", "cusp widths", ""]) :
+      el "p" [] (el "a" [("href", "?app=2&lev=" ++ show lv ++ "&by=lev")] "← the tables") ++
+      el "div" [("class", "scrollx")] (el "table" [("class", "kv cp wide")] (concat $
+        el "tr" [] (concatMap (el "th" []) ["Name", "Index", "con", "len", "c₂", "c₃", "Cusps", "Gal", "Supergroups", "Subgroups", ""]) :
         [ el "tr" [] $ concat
-            [ el "td" [] (el "a" [("href", "?app=2&db=" ++ esc (smName sm))] (esc (smName sm)))
-            , el "td" [] (esc (maybe "" prettyName (smSpecial sm)))
+            [ el "td" [] (el "a" [("href", "?app=2&db=" ++ esc (smName sm))] (esc (inlineTex (nameTex (smName sm))))
+                          ++ maybe "" (\t -> " " ++ el "span" [("class", "muted")] (esc (prettyName t))) (smSpecial sm))
             , el "td" [] (show (smIndex sm))
-            , el "td" [] (show (smGenus sm))
-            , el "td" [] (unwords (map show (smCusps sm)))
+            , el "td" [] (show (smCon sm))
+            , el "td" [] (show (smLen sm))
+            , el "td" [] (show (smE2 sm))
+            , el "td" [] (show (smE3 sm))
+            , el "td" [] (esc (inlineTex (partitionTex (smCusps sm))))
+            , el "td" [] (esc (inlineTex (partitionTex (smGal sm))))
+            , el "td" [] (intercalate " " [ el "a" [("href", "?app=2&db=" ++ esc nm)] (esc (inlineTex (nameTex nm))) | nm <- smSupers sm ])
+            , el "td" [] (intercalate " " [ el "a" [("href", "?app=2&db=" ++ esc nm)] (esc (inlineTex (nameTex nm))) | nm <- smSubs sm ])
             , el "td" [] (el "a" [("href", "?app=2&db=" ++ esc (smName sm) ++ "&view=disk")] "disk")
             ]
-        | sm <- sms ])
+        | sm <- sortOn smGenus sms ]))
   , "</div></body></html>"
   ]

@@ -18,14 +18,15 @@
 -- name (their @11A1@ is a conjugate of Γ₀(11)).
 module Modular.CP
   ( Record(..), parseName, recordFile, parseRecord, findRecord, toSubgroup
-  , Summary(..), scanLevel, scanGenus, scanAll, prettyName
+  , Summary(..), scanLevel, scanGenus, scanAll, allNames, findRecordNamed, prettyName
   , Options(..), Filters, filterAndOptions, compactOptions, parseOptions
-  , compactRecord, parseCompact, compactSummary, parseSummaries, summaryOf, allRecords, exportJson
+  , compactRecord, parseCompact, compactSummary, parseSummaries, parseCandidates, summaryOf, allRecords, exportJson
   ) where
 
 import qualified Data.ByteString.Char8 as B
 import Data.Char (isDigit, isUpper)
 import Data.List (intercalate)
+import qualified Data.Map.Strict as M
 import Modular.Group
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
@@ -41,6 +42,11 @@ data Record = Record
   , rC2       :: [Int]
   , rC3       :: [Int]
   , rSpecial  :: Maybe String
+  , rCon      :: Int        -- ^ their @GLZConj@: conjugates under the outer automorphism
+  , rLen      :: Int        -- ^ their @length@: the number of PSL₂(ℤ)-conjugates
+  , rGal      :: [Int]      -- ^ their @gc@: orbit lengths under the Galois action
+  , rSupers   :: [String]   -- ^ direct supergroups, by name
+  , rSubs     :: [String]   -- ^ direct subgroups of genus ≤ 24, by name
   } deriving (Show)
 
 -- | @11A1@ → (11, "A", 1).
@@ -78,7 +84,34 @@ findRecord dir name = case recordFile name of
             rest  = B.drop start bs
             (body, tl) = B.breakSubstring (B.pack "treesupergroups :=") rest
             close = B.takeWhile (/= '>') tl
-        return (parseRecord (B.unpack (B.concat [body, close, B.pack ">"])))
+        return (fst3 <$> parseRecord (B.unpack (B.concat [body, close, B.pack ">"])))
+  where fst3 (a, _, _) = a
+
+-- | The same, with super- and subgroups named: @names@ is the master list
+-- ('allNames' or the names of 'scanAll', in order).
+findRecordNamed :: FilePath -> [String] -> String -> IO (Either String Record)
+findRecordNamed dir names name = case recordFile name of
+  Nothing -> return (Left ("not a Cummins–Pauli name: " ++ name ++ " (expected e.g. 11A1)"))
+  Just rel -> do
+    let path = dir </> rel
+    ok <- doesFileExist path
+    if not ok then return (Left ("no table " ++ path ++ " — is the csg/ directory in place?")) else do
+      bs <- normalise <$> B.readFile path
+      let marker = B.pack ("name := \"" ++ name ++ "\"")
+          (before, after) = B.breakSubstring marker bs
+      if B.null after then return (Left ("no group " ++ name ++ " in " ++ rel)) else do
+        let start = lastIndexOf (B.pack "rec<") before
+            rest  = B.drop start bs
+            (body, tl) = B.breakSubstring (B.pack "treesupergroups :=") rest
+            close = B.takeWhile (/= '>') tl
+        return (withNames names <$> parseRecord (B.unpack (B.concat [body, close, B.pack ">"])))
+
+-- | Positions in the master list → names.
+withNames :: [String] -> (Record, [Int], [Int]) -> Record
+withNames names (r, sup, sub) = r { rSupers = map nm sup, rSubs = map nm sub }
+  where
+    arr = M.fromList (zip [1 :: Int ..] names)
+    nm i = M.findWithDefault ("#" ++ show i) i arr
 
 normalise :: B.ByteString -> B.ByteString
 normalise = B.unwords . B.words
@@ -91,7 +124,9 @@ lastIndexOf pat s = go 0 0
                   | otherwise -> let at = from + B.length pre in go (at + 1) at
 
 -- | Parse one record's text.
-parseRecord :: String -> Either String Record
+-- | Parse one record's text. Super- and subgroups come out as positions in
+-- the tables' master list; 'withNames' turns them into names.
+parseRecord :: String -> Either String (Record, [Int], [Int])
 parseRecord txt = do
   name  <- str "name"
   lv    <- int "level"
@@ -102,8 +137,15 @@ parseRecord txt = do
   cu    <- ints "cusps"
   c2    <- ints "c2"
   c3    <- ints "c3"
-  return Record { rName = name, rLevel = lv, rIndex = ix, rGenus = gen, rMinusOne = mo
-                , rMatGens = mg, rCusps = cu, rC2 = c2, rC3 = c3, rSpecial = special }
+  con   <- int "GLZConj"
+  len   <- int "length"
+  gal   <- ints "gc"
+  sup   <- ints "direct_supergroups"
+  sub   <- ints "direct_subgroups"
+  return ( Record { rName = name, rLevel = lv, rIndex = ix, rGenus = gen, rMinusOne = mo
+                  , rMatGens = mg, rCusps = cu, rC2 = c2, rC3 = c3, rSpecial = special
+                  , rCon = con, rLen = len, rGal = gal, rSupers = [], rSubs = [] }
+         , sup, sub )
   where
     after key = case breakOn (key ++ " := ") txt of
       Nothing -> Left ("field " ++ key ++ " missing")
@@ -121,10 +163,11 @@ parseRecord txt = do
       case r of
         '"' : t -> Right (takeWhile (/= '"') t)
         _ -> Left ("field " ++ key ++ " is not a string")
-    -- "[ IntegerRing() | 1, 11 ]" → [1, 11]
+    -- "[ IntegerRing() | 1, 11 ]" → [1, 11]; an empty list is written "[]"
     ints key = do
       r <- after key
-      let inner = takeWhile (/= ']') (drop 1 (dropWhile (/= '|') r))
+      let block = takeWhile (/= ']') (drop 1 (dropWhile (/= '[') r))
+          inner = if '|' `elem` block then drop 1 (dropWhile (/= '|') block) else ""
       Right (map read (words (map (\ch -> if ch == ',' then ' ' else ch) inner)))
     matgens = do
       r <- after "matgens"
@@ -193,21 +236,38 @@ prettyName = go
 
 -- | One line of a listing.
 data Summary = Summary
-  { smName :: String, smLevel :: Int, smIndex :: Int, smGenus :: Int, smCusps :: [Int], smSpecial :: Maybe String }
+  { smName :: String, smLevel :: Int, smIndex :: Int, smGenus :: Int, smCusps :: [Int], smSpecial :: Maybe String
+  , smCon :: Int, smLen :: Int, smGal :: [Int], smE2 :: Int, smE3 :: Int
+  , smSupers :: [String], smSubs :: [String] }
   deriving (Show)
+
+-- | The tables' name for a group, in their notation: level, label, genus.
+summaryOfRecord :: Record -> Summary
+summaryOfRecord r = Summary { smName = rName r, smLevel = rLevel r, smIndex = rIndex r, smGenus = rGenus r
+                            , smCusps = rCusps r, smSpecial = rSpecial r, smCon = rCon r, smLen = rLen r, smGal = rGal r
+                            , smE2 = length (filter (== 1) (rC2 r)), smE3 = length (filter (== 1) (rC3 r))
+                            , smSupers = rSupers r, smSubs = rSubs r }
 
 -- | Every group of a given level, across all genera. A cheap scan: only
 -- the fields of the listing are read.
 scanLevel :: FilePath -> Int -> IO [Summary]
-scanLevel dir lv = filter ((== lv) . smLevel) . concat <$> mapM (\gen -> scanFile dir gen (8 * (lv `div` 8))) [0 .. 24]
+scanLevel dir lv = filter ((== lv) . smLevel) <$> scanAll dir
 
--- | Every group of a genus, across all levels: the files @csg<g>-lev*.dat@.
+-- | Every group of a genus, across all levels.
 scanGenus :: FilePath -> Int -> IO [Summary]
-scanGenus dir gen = concat <$> mapM (scanFile dir gen) [0, 8 .. 512]
+scanGenus dir gen = filter ((== gen) . smGenus) <$> scanAll dir
 
--- | Every group in the tables. 114 MB of text; the server does this once.
+-- | Every group in the tables, in the order of their master list, with
+-- super- and subgroups named. 114 MB of text; the server does this once.
 scanAll :: FilePath -> IO [Summary]
-scanAll dir = concat <$> mapM (scanGenus dir) [0 .. 24]
+scanAll dir = do
+  raw <- allRecordsRaw dir
+  let names = [ rName r | (r, _, _) <- raw ]
+  return [ summaryOfRecord (withNames names t) | t <- raw ]
+
+-- | The names of every group, in master order.
+allNames :: FilePath -> IO [String]
+allNames dir = map (\(r, _, _) -> rName r) <$> allRecordsRaw dir
 
 -- Browsing --------------------------------------------------------------------------
 
@@ -251,33 +311,6 @@ parseOptions txt = case [ l | l <- lines txt, take 1 l == "#" ] of
   [] -> Options [] [] []
   where nums t = [ read w | w <- drop 1 (words t), all isDigit w, not (null w) ]
 
-scanFile :: FilePath -> Int -> Int -> IO [Summary]
-scanFile dir gen bucket = do
-      let path = dir </> ("csg" ++ show gen ++ "-lev" ++ show bucket ++ ".dat")
-      ok <- doesFileExist path
-      if not ok then return [] else do
-        bs <- normalise <$> B.readFile path
-        return [ s | chunk <- drop 1 (splitOn (B.pack "rec<") bs), Just s <- [summary chunk] ]
-  where
-    summary chunk = do
-        lvl  <- field "level := " chunk
-        name <- fmap (takeWhile (/= '"') . drop 1) (afterB "name := " chunk)
-        ix   <- field "index := " chunk
-        gen  <- field "genus := " chunk
-        cu   <- fmap (\r -> map read (words (map (\ch -> if ch == ',' then ' ' else ch) (takeWhile (/= ']') (drop 1 (dropWhile (/= '|') r)))))) (afterB "cusps := " chunk)
-        let sp = case afterB "special_name := [" chunk of
-                   Just r -> case dropWhile (/= '"') (takeWhile (/= ']') r) of
-                     '"' : t -> let s = takeWhile (/= '"') t in if null s then Nothing else Just s
-                     _ -> Nothing
-                   Nothing -> Nothing
-        return Summary { smName = name, smLevel = read lvl, smIndex = read ix, smGenus = read gen, smCusps = cu, smSpecial = sp }
-    afterB key chunk = let (_, post) = B.breakSubstring (B.pack key) chunk
-                       in if B.null post then Nothing else Just (B.unpack (B.take 4000 (B.drop (length key) post)))
-    field key chunk = fmap (takeWhile isDigit) (afterB key chunk)
-    splitOn pat bs = case B.breakSubstring pat bs of
-      (pre, post) | B.null post -> [pre]
-                  | otherwise -> pre : splitOn pat (B.drop (B.length pat) post)
-
 -- Compact wire formats -----------------------------------------------------------------
 --
 -- The browser build cannot read 114 MB of Magma; it loads a JSON export of
@@ -291,43 +324,62 @@ compactRecord r = intercalate "|"
   [ rName r, show (rLevel r), show (rIndex r), show (rGenus r), if rMinusOne r then "1" else "0"
   , intercalate ";" [ intercalate "," (map show [a, b, c, d]) | (a, b, c, d) <- rMatGens r ]
   , unwords (map show (rCusps r)), unwords (map show (rC2 r)), unwords (map show (rC3 r))
-  , maybe "" id (rSpecial r) ]
+  , maybe "" id (rSpecial r)
+  , show (rCon r), show (rLen r), unwords (map show (rGal r)), unwords (rSupers r), unwords (rSubs r) ]
 
 parseCompact :: String -> Either String Record
 parseCompact line = case splitOn '|' line of
-  [name, lv, ix, gen, mo, mg, cu, c2, c3, sp] ->
+  [name, lv, ix, gen, mo, mg, cu, c2, c3, sp, con, len, gal, sup, sub] ->
     Right Record { rName = name, rLevel = read lv, rIndex = read ix, rGenus = read gen, rMinusOne = mo == "1"
                  , rMatGens = [ (a, b, c, d) | m <- splitOn ';' mg, not (null m), [a, b, c, d] <- [map read (splitOn ',' m)] ]
                  , rCusps = map read (words cu), rC2 = map read (words c2), rC3 = map read (words c3)
-                 , rSpecial = if null sp then Nothing else Just sp }
+                 , rSpecial = if null sp then Nothing else Just sp
+                 , rCon = read con, rLen = read len, rGal = map read (words gal), rSupers = words sup, rSubs = words sub }
   _ -> Left ("malformed record: " ++ take 60 line)
 
--- | @name|level|index|genus|cusps|special@.
+-- | @name|level|index|genus|cusps|special|con|len|gal|e2|e3|supers|subs@.
 compactSummary :: Summary -> String
-compactSummary sm = intercalate "|" [ smName sm, show (smLevel sm), show (smIndex sm), show (smGenus sm)
-                                    , unwords (map show (smCusps sm)), maybe "" id (smSpecial sm) ]
+compactSummary sm = intercalate "|"
+  [ smName sm, show (smLevel sm), show (smIndex sm), show (smGenus sm), unwords (map show (smCusps sm)), maybe "" id (smSpecial sm)
+  , show (smCon sm), show (smLen sm), unwords (map show (smGal sm)), show (smE2 sm), show (smE3 sm)
+  , unwords (smSupers sm), unwords (smSubs sm) ]
 
 parseSummaries :: String -> [Summary]
-parseSummaries txt = [ sm | l <- lines txt, take 1 l /= "#", Just sm <- [one l] ]
+parseSummaries txt = [ sm | l <- lines txt, take 1 l `notElem` ["#", "!"], Just sm <- [one l] ]
   where
     one l = case splitOn '|' l of
-      [name, lv, ix, gen, cu, sp] | all isDigit lv, all isDigit ix, all isDigit gen, not (null lv) ->
+      [name, lv, ix, gen, cu, sp, con, len, gal, e2, e3, sup, sub]
+        | all isDigit lv, all isDigit ix, all isDigit gen, not (null lv) ->
         Just Summary { smName = name, smLevel = read lv, smIndex = read ix, smGenus = read gen
-                     , smCusps = map read (words cu), smSpecial = if null sp then Nothing else Just sp }
+                     , smCusps = map read (words cu), smSpecial = if null sp then Nothing else Just sp
+                     , smCon = read con, smLen = read len, smGal = map read (words gal), smE2 = read e2, smE3 = read e3
+                     , smSupers = words sup, smSubs = words sub }
       _ -> Nothing
 
+-- | Candidate records for identification travel in the same string, one
+-- per line, prefixed @!@.
+parseCandidates :: String -> [Record]
+parseCandidates txt = [ r | l <- lines txt, take 1 l == "!", Right r <- [parseCompact (drop 1 l)] ]
+
 summaryOf :: Record -> Summary
-summaryOf r = Summary { smName = rName r, smLevel = rLevel r, smIndex = rIndex r, smGenus = rGenus r
-                      , smCusps = rCusps r, smSpecial = rSpecial r }
+summaryOf = summaryOfRecord
 
 splitOn :: Char -> String -> [String]
 splitOn ch s = case break (== ch) s of
   (w, [])    -> [w]
   (w, _ : r) -> w : splitOn ch r
 
--- | Every record in the tables.
+-- | Every record in the tables, in master order, with links named.
 allRecords :: FilePath -> IO [Record]
-allRecords dir = concat <$> mapM one [ (g, b) | g <- [0 .. 24 :: Int], b <- [0, 8 .. 512 :: Int] ]
+allRecords dir = do
+  raw <- allRecordsRaw dir
+  let names = [ rName r | (r, _, _) <- raw ]
+  return (map (withNames names) raw)
+
+-- | Every record, links as positions. The master list is the files in the
+-- order they load one another: genus by genus, level bucket by bucket.
+allRecordsRaw :: FilePath -> IO [(Record, [Int], [Int])]
+allRecordsRaw dir = concat <$> mapM one [ (g, b) | g <- [0 .. 24 :: Int], b <- [0, 8 .. 512 :: Int] ]
   where
     one (gen, bucket) = do
       let path = dir </> ("csg" ++ show gen ++ "-lev" ++ show bucket ++ ".dat")
@@ -347,6 +399,9 @@ exportJson rs = "[" ++ intercalate ",\n" (map obj rs) ++ "]\n"
             ++ ",\"g\":" ++ show (rGenus r) ++ ",\"m\":" ++ (if rMinusOne r then "1" else "0")
             ++ ",\"mg\":[" ++ intercalate "," [ "[" ++ intercalate "," (map show [a, b, c, d]) ++ "]" | (a, b, c, d) <- rMatGens r ] ++ "]"
             ++ ",\"cu\":" ++ ints (rCusps r) ++ ",\"c2\":" ++ ints (rC2 r) ++ ",\"c3\":" ++ ints (rC3 r)
-            ++ ",\"s\":" ++ str (maybe "" id (rSpecial r)) ++ "}"
+            ++ ",\"s\":" ++ str (maybe "" id (rSpecial r))
+            ++ ",\"con\":" ++ show (rCon r) ++ ",\"len\":" ++ show (rLen r) ++ ",\"gal\":" ++ ints (rGal r)
+            ++ ",\"sup\":" ++ strs (rSupers r) ++ ",\"sub\":" ++ strs (rSubs r) ++ "}"
     ints xs = "[" ++ intercalate "," (map show xs) ++ "]"
+    strs xs = "[" ++ intercalate "," (map str xs) ++ "]"
     str t = "\"" ++ concatMap (\c -> case c of { '"' -> "\\\""; '\\' -> "\\\\"; _ -> [c] }) t ++ "\""

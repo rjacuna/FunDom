@@ -7,13 +7,15 @@
 -- the chosen filters and what the dropdowns may offer.
 module Web.Context (Context(..)) where
 
-import Modular.CP (Options, Summary)
+import Modular.CP (Options, Record, Summary)
 import Modular.Group (Subgroup)
 import Web.Params
 
 data Context = Context
-  { cxParams  :: Params
-  , cxGroup   :: Either String Subgroup
-  , cxOptions :: Options      -- ^ mode 2: values of genus, level, index consistent with the other filters
-  , cxClass   :: [Summary]    -- ^ mode 2: the groups matching every chosen filter
+  { cxParams     :: Params
+  , cxGroup      :: Either String Subgroup
+  , cxRecord     :: Maybe Record   -- ^ mode 2: the chosen entry of the tables
+  , cxOptions    :: Options        -- ^ mode 2: values of genus, level, index consistent with the other filters
+  , cxClass      :: [Summary]      -- ^ mode 2: the groups matching every chosen filter
+  , cxCandidates :: [Record]       -- ^ modes 1 and 3: table entries with the group's genus, level, index and cusp widths
   }

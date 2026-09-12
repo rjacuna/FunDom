@@ -26,6 +26,7 @@ library
                       Modular.Coset
                       Modular.Congruence
                       Modular.Generators
+                      Modular.Identify
                       Modular.Domain
                       Modular.Geometry
                       Modular.Disk
