@@ -1,0 +1,64 @@
+cabal-version:      2.4
+name:               fundom
+version:            0.1.0.0
+synopsis:           Fundamental domains of congruence subgroups of SL2(Z), on FLINT
+license:            NONE
+build-type:         Simple
+extra-source-files: cbits/*.h
+
+-- The mathematics. Every number that matters is a FLINT object: elements of
+-- PSL2(Z) are psl2z_t, cusps and arc centres are fmpq_t, vertices are acb_t
+-- balls, and the view transform runs in arb at a precision chosen from the
+-- zoom. The binding is Flint.FFI: opaque pointers and plain ccalls over the
+-- C shims in cbits/, so the same source builds natively and for wasm32-wasi.
+library
+    hs-source-dirs:   src
+    exposed-modules:  Flint.FFI
+                      Flint.Z
+                      Flint.SL2
+                      Flint.Ball
+                      Flint.Mat
+                      Modular.Group
+                      Modular.CP
+                      Modular.Word
+                      Modular.Coset
+                      Modular.Congruence
+                      Modular.Generators
+                      Modular.Domain
+                      Modular.Geometry
+                      Modular.Disk
+                      Render.Svg
+                      Render.Page
+                      Web.Params
+                      Web.Context
+                      Web.Group
+    build-depends:    base >=4 && <5, containers, array, bytestring, directory, filepath
+    c-sources:        cbits/fundom_shims.c
+    include-dirs:     cbits
+    extra-libraries:  flint, gmp
+    default-language: Haskell2010
+    ghc-options:      -Wall -Wno-name-shadowing -Wno-unused-do-bind
+
+-- Command line: index, genus, cusps, and the SVG, for a group.
+executable fundom
+    hs-source-dirs:   app
+    main-is:          Main.hs
+    build-depends:    base, array, fundom
+    default-language: Haskell2010
+    ghc-options:      -Wall
+
+-- Server-side HTML UI. All state lives in the URL; the page is a pure
+-- function of the query string, rendered by the library.
+executable fundom-server
+    hs-source-dirs:   app
+    main-is:          Server.hs
+    build-depends:    base, fundom, warp, wai, http-types, bytestring, text
+    default-language: Haskell2010
+    ghc-options:      -Wall -threaded
+
+test-suite spec
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    build-depends:    base, array, containers, directory, fundom
+    default-language: Haskell2010

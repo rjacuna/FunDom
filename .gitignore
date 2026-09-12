@@ -1,0 +1,10 @@
+dist-newstyle/
+*.hi
+*.o
+# Cummins–Pauli tables: 114 MB of data; keep the Magma code, not the .dat files
+csg/*.dat
+csg/*.tar.gz
+# the browser build: published from the gh-pages branch, not kept in the source
+web/fundom.wasm
+web/fundom.js
+web/csg.json
