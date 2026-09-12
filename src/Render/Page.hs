@@ -269,7 +269,7 @@ css = unlines
   , ".mat{font-family:ui-monospace,Menlo,monospace;font-size:13px}"
   , ".warn{color:#b00} .ok{color:#080} .muted{color:#666}"
   , "table.cp td:first-child{background:#d5e6f7;color:#123;text-align:center;padding:4px 8px;border-radius:3px} table.cp th{background:#c9e8b8;padding:4px 8px}"
-  , ".layout>*{min-width:0} .go{display:inline-flex;gap:4px;align-items:center;margin:0} .go select{font-size:13px;max-width:200px} .go button{margin-top:0;padding:3px 9px}"
+  , ".layout>*{min-width:0} .go{display:inline-flex;gap:4px;align-items:center;margin:0} .go select{font-size:13px;max-width:200px} .go button{margin-top:0;padding:3px 9px} .nb{white-space:nowrap}"
   , "@media (max-width:1150px){.layout{grid-template-columns:1fr}}"
   ]
 
@@ -301,6 +301,24 @@ texWord g = case wordOf g of
 
 inlineTex :: String -> String
 inlineTex t = "\\(" ++ t ++ "\\)"
+
+-- | Formulas in a row that may wrap: each is typeset on its own and keeps
+-- its comma, so a line breaks only between them.
+formulas :: [String] -> String
+formulas = unwords . units "" ""
+
+-- | A presentation ⟨g₁, …, gₙ⟩ that wraps between generators.
+presentation :: [String] -> String
+presentation = unwords . units (esc (inlineTex "\\bigl\\langle") ++ "&nbsp;") ("&nbsp;" ++ esc (inlineTex "\\bigr\\rangle"))
+
+-- | Each formula with its comma (the first with an opening, the last with
+-- a closing) as an unbreakable unit.
+units :: String -> String -> [String] -> [String]
+units open close ts =
+  [ el "span" [("class", "nb")] (o ++ esc (inlineTex t) ++ c)
+  | (i, t) <- zip [1 :: Int ..] ts
+  , let o = if i == 1 then open else ""
+        c = if i == length ts then close else "," ]
 
 renderPage :: Context -> String
 renderPage cx = unlines
@@ -467,7 +485,7 @@ generatorControls p = concat
       ]
   , el "h2" [] "Examples"
   , el "div" [("class", "chain")] $ concat
-      [ btn (href (fresh p) { pApp = 3, pGens = g }) (inlineTex label) | (label, g) <- examples ]
+      [ el "a" [("class", "btn"), ("href", href (fresh p) { pApp = 3, pGens = g })] (presentation mats) | (mats, g) <- examples ]
   ]
 
 -- | The view, in every mode.
@@ -547,7 +565,7 @@ certificate cx p = case cxGroup cx of
   Left err -> el "h2" [] "Certificate" ++ el "p" [("class", "warn")] (esc err)
   Right sg -> concat
     [ el "h2" [] "Certificate"
-    , el "p" [] (either esc (\gs -> esc (inlineTex ("\\left\\langle " ++ intercalate ",\\ " (map texMat gs) ++ "\\right\\rangle"))) (parseGenerators (pGens p)))
+    , el "p" [] (either esc (presentation . map texMat) (parseGenerators (pGens p)))
     , case sgVerdict sg of
         Just (lv, Nothing)  -> el "p" [("class", "ok")] ("Congruence: the group contains Γ(" ++ show lv ++ "). Hsu's relations for level " ++ show lv ++ " hold in the coset action.")
         Just (lv, Just why) -> el "p" [("class", "warn")] ("Not congruence: Hsu's relation " ++ esc why ++ " fails in the coset action, so the group does not contain Γ(" ++ show lv ++ "), and by Wohlfahrt's theorem contains no Γ(N) at all.")
@@ -671,8 +689,8 @@ cpTable cx p r linked = el "table" [("class", "kv cp")] $ concat
   , row "Supergroups" (chooser (rSupers r))
   , row "Subgroups" (chooser (rSubs r))
   , row "Matrix generators" (if null (rMatGens r) then "—" else
-      esc (inlineTex (intercalate ",\\ " [ "\\begin{pmatrix}" ++ show a ++ "&" ++ show b ++ "\\\\" ++ show c ++ "&" ++ show d ++ "\\end{pmatrix}" | (a, b, c, d) <- rMatGens r ]
-                     ++ "\\pmod{" ++ show (rLevel r) ++ "}")))
+      formulas [ "\\begin{pmatrix}" ++ show a ++ "&" ++ show b ++ "\\\\" ++ show c ++ "&" ++ show d ++ "\\end{pmatrix}" | (a, b, c, d) <- rMatGens r ]
+      ++ " " ++ esc (inlineTex ("\\pmod{" ++ show (rLevel r) ++ "}")))
   ]
   where
     row k v = el "tr" [] (el "td" [] (esc k) ++ el "td" [] v)

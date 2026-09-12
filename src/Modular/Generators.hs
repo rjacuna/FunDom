@@ -61,10 +61,10 @@ groupFromGenerators gs = case enumerateMatrices gs of
                                    , exE2 = e2, exE3 = e3, exSpecial = Nothing }
          , sgVerdict = Just (lv, case verdict of { Congruence -> Nothing; NotCongruence why -> Just why }) }
 
--- | Worked examples for the generator box: the generators, as KaTeX, and
--- the text for the box. What they generate is for the info panel to say.
-examples :: [(String, String)]
-examples = [ (angle mats, unlines' mats) | mats <- sets ]
+-- | Worked examples for the generator box: the generators, each as KaTeX,
+-- and the text for the box. What they generate is for the info panel to say.
+examples :: [([String], String)]
+examples = [ (map sm mats, unlines' mats) | mats <- sets ]
   where
     sets =
       [ [[1, 1, 0, 1], [1, 0, 2, 1]]                                     -- Γ₀(2)
@@ -72,7 +72,6 @@ examples = [ (angle mats, unlines' mats) | mats <- sets ]
       , [[1, 1, 0, 1], [-5, -1, 11, 2], [-4, 1, 11, -3], [-3, 1, 11, -4], [-2, -1, 11, 5], [3, 1, 11, 4], [4, 1, 11, 3]]  -- Γ₀(11), its side pairings
       , [[2, -1, 1, 0], [0, -1, 1, -2], [-1, -2, 1, 1], [-1, -1, 3, 2]]  -- index 7, not congruence
       ]
-    angle ms = "\\left\\langle " ++ intercalate ",\\ " (map sm ms) ++ "\\right\\rangle"
     unlines' ms = intercalate "\n" [ unwords (map show m) | m <- ms ]
     sm :: [Int] -> String
     sm [a, b, c, d] = "\\left(\\begin{smallmatrix}" ++ show a ++ "&" ++ show b ++ "\\\\" ++ show c ++ "&" ++ show d ++ "\\end{smallmatrix}\\right)"
