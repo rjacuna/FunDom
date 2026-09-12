@@ -255,6 +255,8 @@ css = unlines
   , ".pill select{border:none;background:transparent;font-size:13px;padding:0;margin:0;max-width:220px}"
   , ".pill input[type=number]{border:none;background:transparent;font-size:13px;padding:0;margin:0;width:4.5em}"
   , ".pill.cap{justify-content:center;align-items:center;min-width:0;padding:5px 7px;border-color:transparent;background:transparent;font-size:15px}"
+  , ".pills.family{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:stretch} .pills.family .pill{min-width:0}"
+  , ".pills.family .pill select,.pills.family .pill input[type=number]{width:100%;box-sizing:border-box}"
   , "button{padding:5px 12px;font-size:13px;border-radius:5px;border:1px solid #243b6b;background:#243b6b;color:#fff;margin-top:6px}"
   , "input,select,textarea{font-size:13px;padding:3px 5px;margin:2px 0} input[type=number]{width:5.5em} input.rat{width:8em} input.ent{width:4em}"
   , "textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace}"
@@ -349,13 +351,13 @@ familyControls p = concat
   [ el "p" [("class", "muted")] ("This mode is a port of " ++ el "b" [] "Helena A. Verrill's" ++ " Fundamental Domain Drawer (Java applet, 2001): the choice of groups, the walk that lays out the triangles, the side-pairing table, the edit and link modes and the triangle explorer are hers, following her <i>Algorithm for Drawing Fundamental Domains</i> (January 2001).")
   , el "h2" [] "Group"
   , el "form" [("method", "get"), ("action", "")] $ concat
-      [ el "div" [("class", "pills")] $ concat
+      -- two rows on one grid: N sits under the first type, M under the second
+      [ el "div" [("class", "pills family")] $ concat
           [ el "label" [("class", "pill on")] (el "small" [] "type" ++ dropdown "g1" [ (typeCode t, typeLabel t "N") | t <- allTypes ] (Just (typeCode (pG1 p))) "")
           , el "span" [("class", "pill cap")] "∩"
           , el "label" [("class", "pill on")] (el "small" [] "type" ++ dropdown "g2" [ (typeCode t, typeLabel t "M") | t <- allTypes ] (Just (typeCode (pG2 p))) "")
-          ]
-      , el "div" [("class", "pills")] $ concat
-          [ el "label" [("class", "pill on")] (el "small" [] "N" ++ "<input type=\"number\" name=\"n\" min=\"1\" value=\"" ++ show (pN p) ++ "\" onchange=\"this.form.requestSubmit()\">")
+          , el "label" [("class", "pill on")] (el "small" [] "N" ++ "<input type=\"number\" name=\"n\" min=\"1\" value=\"" ++ show (pN p) ++ "\" onchange=\"this.form.requestSubmit()\">")
+          , el "span" [("class", "pill cap")] ""
           , el "label" [("class", "pill on")] (el "small" [] "M" ++ "<input type=\"number\" name=\"m\" min=\"1\" value=\"" ++ show (pM p) ++ "\" onchange=\"this.form.requestSubmit()\">")
           ]
       , el "label" [] ("scale <input class=\"rat\" name=\"scale\" value=\"" ++ esc (showRat (pScale p)) ++ "\"> px per unit")
