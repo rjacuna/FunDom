@@ -18,4 +18,5 @@ data Context = Context
   , cxOptions    :: Options        -- ^ mode 2: values of genus, level, index consistent with the other filters
   , cxClass      :: [Summary]      -- ^ mode 2: the groups matching every chosen filter
   , cxCandidates :: [Record]       -- ^ modes 1 and 3: table entries with the group's genus, level, index and cusp widths
+  , cxNames      :: [(String, String)] -- ^ classical names of the entries the panel may link to
   }

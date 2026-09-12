@@ -15,8 +15,8 @@ import Network.HTTP.Types (status200, status404)
 import Network.Wai
 import Network.Wai.Handler.Warp (run)
 import Data.IORef
-import Modular.CP (Summary, scanAll, scanLevel)
-import Render.Page (renderPage, renderSvgOnly, renderLevel)
+import Modular.CP (Summary, scanAll)
+import Render.Page (renderPage, renderSvgOnly)
 import System.Environment (getArgs)
 import System.IO
 import Web.Group (resolve, csgDirDefault)
@@ -47,11 +47,6 @@ app :: FilePath -> IO [Summary] -> Application
 app dir loader req respond = case pathInfo req of
   []      -> resolve dir loader params >>= \cx -> respond (page "text/html; charset=utf-8" (renderPage cx))
   ["svg"] -> resolve dir loader params >>= \cx -> respond (page "image/svg+xml; charset=utf-8" (renderSvgOnly cx))
-  ["csg"] -> case lookup "level" query of
-               Just lv | all (`elem` ['0' .. '9']) lv, not (null lv) -> do
-                 sms <- scanLevel dir (read lv)
-                 respond (page "text/html; charset=utf-8" (renderLevel (read lv) sms))
-               _ -> respond (responseLBS status404 [("Content-Type", "text/plain")] "give ?level=N")
   _       -> respond (responseLBS status404 [("Content-Type", "text/plain")] "not found")
   where
     query  = [ (dec k, maybe "" dec v) | (k, v) <- queryString req ]

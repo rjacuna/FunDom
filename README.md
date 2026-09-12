@@ -100,8 +100,7 @@ circle, so nothing is truncated.
 
 Everything is in the URL. There is no JavaScript: every control is a link
 or a GET form, so a picture is a permalink and the page is a pure function
-`Params → HTML` (`Render.Page.renderPage`). `/svg?…` is the picture alone;
-`/csg?level=N` lists the tables' groups of level N.
+`Params → HTML` (`Render.Page.renderPage`). `/svg?…` is the picture alone.
 
 ## Where FLINT is
 

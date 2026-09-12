@@ -24,9 +24,9 @@ csgDirDefault = "csg"
 -- | The context, given the chosen table record (if any), the groups
 -- matching the chosen filters with the dropdown options (mode 2), and the
 -- table entries that might be this group (modes 1 and 3).
-contextFrom :: Params -> Either String Record -> ([Summary], Options) -> [Record] -> Context
-contextFrom p0 rec (matching, opts) cands = case pApp p0 of
-  3 -> Context p0 (parseGenerators (pGens p0) >>= groupFromGenerators) Nothing opts [] cands
+contextFrom :: Params -> Either String Record -> ([Summary], Options) -> [Record] -> [(String, String)] -> Context
+contextFrom p0 rec (matching, opts) cands names = case pApp p0 of
+  3 -> Context p0 (parseGenerators (pGens p0) >>= groupFromGenerators) Nothing opts [] cands names
   2 ->
     let -- a group named directly fixes the filters
         p = case (pGenus p0, pLevel p0, pIndex p0, rec) of
@@ -35,8 +35,8 @@ contextFrom p0 rec (matching, opts) cands = case pApp p0 of
         grp = case pDb p of
                 Just _  -> toSubgroup <$> rec
                 Nothing -> Left "choose a group"
-    in Context p grp (either (const Nothing) Just rec) opts matching []
-  _ -> Context p0 (Right (subgroup (pG1 p0) (pN p0) (pG2 p0) (pM p0))) Nothing opts [] cands
+    in Context p grp (either (const Nothing) Just rec) opts matching [] names
+  _ -> Context p0 (Right (subgroup (pG1 p0) (pN p0) (pG2 p0) (pM p0))) Nothing opts [] cands names
 
 -- | The group of modes 1 and 3 alone, for finding its key.
 groupOnly :: Params -> Either String Subgroup
@@ -58,14 +58,18 @@ resolve dir loader p = case pApp p of
     let filters = case (pGenus p, pLevel p, pIndex p, rec) of
           (Nothing, Nothing, Nothing, Right r) -> (Just (rGenus r), Just (rLevel r), Just (rIndex r))
           _ -> (pGenus p, pLevel p, pIndex p)
-    return (contextFrom p rec (filterAndOptions filters sms) [])
+    return (contextFrom p rec (filterAndOptions filters sms) [] (related sms (either (const []) neighbours rec)))
   _ -> do
     -- the table entries this group might be, by genus, level, index and widths
+    sms <- loader
     cands <- case groupOnly p >>= enumerate of
       Right dom -> do
-        sms <- loader
         let names = map smName sms
         rs <- mapM (findRecordNamed dir names . smName) (candidatesOf (keyOf dom) sms)
         return [ r | Right r <- rs ]
       Left _ -> return []
-    return (contextFrom p (Left "no table lookup") ([], Options [] [] []) cands)
+    return (contextFrom p (Left "no table lookup") ([], Options [] [] []) cands (related sms (concatMap neighbours cands)))
+  where
+    neighbours r = rSupers r ++ rSubs r
+    -- the classical names among the entries named
+    related sms ns = [ (smName sm, sp) | sm <- sms, smName sm `elem` ns, Just sp <- [smSpecial sm] ]

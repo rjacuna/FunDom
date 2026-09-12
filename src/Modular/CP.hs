@@ -18,9 +18,9 @@
 -- name (their @11A1@ is a conjugate of Γ₀(11)).
 module Modular.CP
   ( Record(..), parseName, recordFile, parseRecord, findRecord, toSubgroup
-  , Summary(..), scanLevel, scanGenus, scanAll, allNames, findRecordNamed, prettyName
+  , Summary(..), scanLevel, scanGenus, scanAll, allNames, findRecordNamed, prettyName, displayName, specialTex
   , Options(..), Filters, filterAndOptions, compactOptions, parseOptions
-  , compactRecord, parseCompact, compactSummary, parseSummaries, parseCandidates, summaryOf, allRecords, exportJson
+  , compactRecord, parseCompact, compactSummary, parseSummaries, parseCandidates, parseNames, summaryOf, allRecords, exportJson
   ) where
 
 import qualified Data.ByteString.Char8 as B
@@ -218,7 +218,7 @@ toSubgroup r = (fromMatrices name (rLevel r) (rMinusOne r) (rMatGens r))
       , exE2 = length (filter (== 1) (rC2 r)), exE3 = length (filter (== 1) (rC3 r))
       , exSpecial = rSpecial r } }
   where
-    name = rName r ++ maybe "" (\s -> " = " ++ prettyName s) (rSpecial r)
+    name = displayName (rName r) (rSpecial r)
 
 -- | The tables' classical names are LaTeX: @\overline\Gamma_0(11)@ is
 -- their Γ₀(11) (the bar for the image in PSL₂). Enough of it in Unicode
@@ -233,6 +233,18 @@ prettyName = go
     table = [ ("\\overline", ""), ("\\Gamma", "Γ"), ("\\cap", "∩"), ("\\pm", "±")
             , ("_0", "₀"), ("_1", "₁"), ("^0", "⁰"), ("^1", "¹"), ("\\,", " "), ("\\ ", " ") ]
     stripPrefix' pat str = if take (length pat) str == pat then Just (drop (length pat) str) else Nothing
+
+-- | How an entry is named in the interface: its classical name when it has
+-- one, else its name in the tables.
+displayName :: String -> Maybe String -> String
+displayName nm = maybe nm prettyName
+
+-- | A classical name as TeX for display: the bar (image in PSL₂) dropped.
+specialTex :: String -> String
+specialTex [] = []
+specialTex s@(ch : rest)
+  | take 9 s == "\\overline" = specialTex (drop 9 s)
+  | otherwise = ch : specialTex rest
 
 -- | One line of a listing.
 data Summary = Summary
@@ -345,7 +357,7 @@ compactSummary sm = intercalate "|"
   , unwords (smSupers sm), unwords (smSubs sm) ]
 
 parseSummaries :: String -> [Summary]
-parseSummaries txt = [ sm | l <- lines txt, take 1 l `notElem` ["#", "!"], Just sm <- [one l] ]
+parseSummaries txt = [ sm | l <- lines txt, take 1 l `notElem` ["#", "!", "~"], Just sm <- [one l] ]
   where
     one l = case splitOn '|' l of
       [name, lv, ix, gen, cu, sp, con, len, gal, e2, e3, sup, sub]
@@ -360,6 +372,11 @@ parseSummaries txt = [ sm | l <- lines txt, take 1 l `notElem` ["#", "!"], Just 
 -- per line, prefixed @!@.
 parseCandidates :: String -> [Record]
 parseCandidates txt = [ r | l <- lines txt, take 1 l == "!", Right r <- [parseCompact (drop 1 l)] ]
+
+-- | The classical names of the entries a panel may link to travel as
+-- @~name|special@ lines.
+parseNames :: String -> [(String, String)]
+parseNames txt = [ (nm, sp) | l <- lines txt, take 1 l == "~", [nm, sp] <- [splitOn '|' (drop 1 l)], not (null sp) ]
 
 summaryOf :: Record -> Summary
 summaryOf = summaryOfRecord

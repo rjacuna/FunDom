@@ -1,7 +1,7 @@
 // FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
 // Copyright (C) 2026 RJ Acuña. SPDX-License-Identifier: GPL-3.0-or-later
 // The single-page version. The same Haskell that serves the native page is a
-// wasm32-wasi reactor module with three exports — render, svg, level — and
+// wasm32-wasi reactor module with exports — render, svg, identifyKey — and
 // this file is the whole difference: it owns the URL, hands the module the
 // query string and (in mode 2) the table data, and puts the HTML on the page.
 // Every link and form the Haskell renders is relative and stateless, so this
@@ -61,17 +61,18 @@ async function inputs(query) {
     const widths = ws.split(" ").map(Number).sort((a, b) => a - b).join(" ");
     const data = await tables();
     const cands = data.filter(x => x.g === +g && x.l === +l && x.i === +i && [...x.cu].sort((a, b) => a - b).join(" ") === widths);
-    return { record: "", summaries: cands.map(r => "!" + compactRecord(r)).join("\n") };
+    return { record: "", summaries: [...cands.map(r => "!" + compactRecord(r)), ...classical(data, cands)].join("\n") };
   }
   const data = await tables();
   const name = (p.get("db") || "").toUpperCase();
   const num = k => (p.get(k) || "") === "" ? null : +p.get(k);
   let f = { g: num("gen"), l: num("lev"), i: num("idx") };
-  let record = "";
+  let record = "", names = [];
   if (name) {
     const r = data.find(x => x.n === name);
     if (r) {
       record = compactRecord(r);
+      names = classical(data, [r]);
       if (f.g === null && f.l === null && f.i === null) f = { g: r.g, l: r.l, i: r.i };
     }
   }
@@ -82,7 +83,14 @@ async function inputs(query) {
                + "|idx " + distinct("i", { ...f, i: null }).join(" ");
   const anyChosen = f.g !== null || f.l !== null || f.i !== null;
   const matching = anyChosen ? data.filter(x => fits(x, f)).map(compactSummary) : [];
-  return { record, summaries: [header, ...matching].join("\n") };
+  return { record, summaries: [header, ...matching, ...names].join("\n") };
+}
+
+// The classical names among the super- and subgroups of some records, as
+// the ~name|special lines Modular.CP.parseNames reads.
+function classical(data, recs) {
+  const ns = new Set(recs.flatMap(r => [...r.sup, ...r.sub]));
+  return data.filter(x => x.s && ns.has(x.n)).map(x => "~" + x.n + "|" + x.s);
 }
 
 function spinner() {
@@ -118,13 +126,6 @@ async function render(query) {
   spinner();
   await nextFrame();                   // let the spinner paint before the (synchronous) render
   const m = await load();
-  if (p.has("list")) {
-    // the listing of one level, a JS-only route
-    const lv = p.get("list");
-    const data = await tables();
-    show(m.level(String(+lv), data.filter(x => x.l === +lv).map(compactSummary).join("\n")));
-    return;
-  }
   const { record, summaries } = await inputs(query);
   show(m.render(query.replace(/^\?/, ""), record, summaries));
 }
@@ -153,7 +154,6 @@ document.addEventListener("click", ev => {
   const href = a.getAttribute("href");
   if (href.startsWith("?")) { ev.preventDefault(); go(href); }
   else if (href.startsWith("svg?")) { ev.preventDefault(); openSvg(href.slice(3)).catch(fail); }
-  else if (href.startsWith("csg?level=")) { ev.preventDefault(); go("?list=" + href.slice("csg?level=".length)); }
 });
 
 document.addEventListener("submit", ev => {

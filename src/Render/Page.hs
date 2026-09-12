@@ -22,7 +22,7 @@
 -- The view — upper half-plane or disk — and everything under "Show" are
 -- global to all three.
 module Render.Page
-  ( renderPage, renderSvgOnly, sceneFor, renderLevel
+  ( renderPage, renderSvgOnly, sceneFor
   ) where
 
 import Data.Array ((!))
@@ -31,7 +31,7 @@ import Data.Ratio
 import Flint.Ball
 import Flint.SL2
 import Flint.Z
-import Modular.CP (Record(..), Summary(..), Options(..), prettyName, parseName)
+import Modular.CP (Record(..), Summary(..), Options(..), displayName, specialTex, parseName)
 import Modular.Identify (identify)
 import Modular.Disk
 import Modular.Domain
@@ -269,7 +269,7 @@ css = unlines
   , ".mat{font-family:ui-monospace,Menlo,monospace;font-size:13px}"
   , ".warn{color:#b00} .ok{color:#080} .muted{color:#666}"
   , "table.cp td:first-child{background:#d5e6f7;color:#123;text-align:center;padding:4px 8px;border-radius:3px} table.cp th{background:#c9e8b8;padding:4px 8px}"
-  , "table.cp.wide td:first-child{background:none;text-align:left} table.cp.wide td{border-bottom:1px solid #eee;white-space:nowrap} .scrollx{overflow-x:auto;position:relative} .layout>*{min-width:0}"
+  , ".layout>*{min-width:0} .go{display:inline-flex;gap:4px;align-items:center;margin:0} .go select{font-size:13px;max-width:200px} .go button{margin-top:0;padding:3px 9px}"
   , "@media (max-width:1150px){.layout{grid-template-columns:1fr}}"
   ]
 
@@ -434,7 +434,7 @@ browseControls cx p = concat
           el "label" [("class", "pill on")] (el "small" [] "group"
             ++ dropdown "db" [ (smName sm, describe sm) | sm <- cxClass cx ] (pDb p) (if null (cxClass cx) then "no match" else "group…"))
       | otherwise = el "span" [("class", "pill off")] (el "small" [] "group" ++ el "span" [] "—")
-    describe sm = smName sm ++ maybe "" (\t -> " · " ++ prettyName t) (smSpecial sm)
+    describe sm = displayName (smName sm) (smSpecial sm)
                   ++ " · index " ++ show (smIndex sm) ++ ", genus " ++ show (smGenus sm) ++ ", level " ++ show (smLevel sm)
 
 -- | A select that submits its form on change, with a placeholder when
@@ -561,11 +561,11 @@ certificate cx p = case cxGroup cx of
 infoPanel :: Context -> Params -> Built -> String
 infoPanel cx p (Built dom inf) = concat
   [ case (pApp p, cxRecord cx, found) of
-      (2, Just r, _) -> el "h2" [] (esc (tableName r)) ++ cpTable p r
-                        ++ el "p" [("class", "muted")] (el "a" [("href", "csg?level=" ++ show (rLevel r))] ("All groups of level " ++ show (rLevel r)) ++ ". Entries are up to conjugacy in PGL₂(ℤ); the matrix generators define one representative.")
+      (2, Just r, _) -> cpTable cx p r False
+                        ++ el "p" [("class", "muted")] "Entries are up to conjugacy in PGL₂(ℤ); the matrix generators define one representative."
       (_, _, Just r) -> el "h2" [] (esc (subgroupName sg))
-                        ++ el "p" [] ("In the tables: " ++ el "a" [("href", href (toGroup p (rName r)))] (esc (tableName r)) ++ ".")
-                        ++ cpTable p r
+                        ++ cpTable cx p r True
+                        ++ el "p" [("class", "muted")] "An entry of the tables, up to conjugacy in PGL₂(ℤ); its name opens it there."
       _              -> el "h2" [] (esc (subgroupName sg)) ++ computed ++ el "p" [("class", "muted")] (esc whyNot)
   , mismatch
   , el "h2" [] "Cusps in the picture"
@@ -638,9 +638,10 @@ infoPanel cx p (Built dom inf) = concat
 toGroup :: Params -> String -> Params
 toGroup p nm = (fresh p) { pApp = 2, pDb = Just nm, pScale = 50, pCx = 0, pAuto = True }
 
--- | @13A²⁴@: level, label, genus, as in the tables.
-tableName :: Record -> String
-tableName r = rName r ++ maybe "" (\t -> " = " ++ prettyName t) (rSpecial r)
+-- | The name shown, as TeX: the classical one when there is one, else
+-- @13\mathrm{A}^{24}@ — level, label, genus, as in the tables.
+displayTex :: String -> Maybe String -> String
+displayTex nm = maybe (nameTex nm) specialTex
 
 nameTex :: String -> String
 nameTex nm = case parseName nm of
@@ -655,10 +656,11 @@ partitionTex xs = intercalate "\\," [ show v ++ "^{" ++ show (length grp) ++ "}"
     groupRuns [] = []
     groupRuns (y : ys) = let (same, rest) = span (== y) ys in (y : same) : groupRuns rest
 
--- | One entry of the tables, in their columns, as a key–value table.
-cpTable :: Params -> Record -> String
-cpTable p r = el "table" [("class", "kv cp")] $ concat
-  [ row "Name" (esc (inlineTex (nameTex (rName r))) ++ maybe "" (\t -> "  " ++ esc (prettyName t)) (rSpecial r))
+-- | One entry of the tables, in their columns, as a key–value table; the
+-- name links to the entry in the browsing mode when asked.
+cpTable :: Context -> Params -> Record -> Bool -> String
+cpTable cx p r linked = el "table" [("class", "kv cp")] $ concat
+  [ row "Name" (if linked then el "a" [("href", href (toGroup p (rName r))), ("title", "open in the tables")] name else name)
   , row "Index" (show (rIndex r))
   , row "con" (show (rCon r))
   , row "len" (show (rLen r))
@@ -666,16 +668,22 @@ cpTable p r = el "table" [("class", "kv cp")] $ concat
   , row "c₃" (show (length (filter (== 1) (rC3 r))))
   , row "Cusps" (esc (inlineTex (partitionTex (rCusps r))))
   , row "Gal" (esc (inlineTex (partitionTex (rGal r))))
-  , row "Supergroups" (links (rSupers r))
-  , row "Subgroups" (links (rSubs r))
+  , row "Supergroups" (chooser (rSupers r))
+  , row "Subgroups" (chooser (rSubs r))
   , row "Matrix generators" (if null (rMatGens r) then "—" else
       esc (inlineTex (intercalate ",\\ " [ "\\begin{pmatrix}" ++ show a ++ "&" ++ show b ++ "\\\\" ++ show c ++ "&" ++ show d ++ "\\end{pmatrix}" | (a, b, c, d) <- rMatGens r ]
                      ++ "\\pmod{" ++ show (rLevel r) ++ "}")))
   ]
   where
     row k v = el "tr" [] (el "td" [] (esc k) ++ el "td" [] v)
-    links [] = "—"
-    links ns = intercalate " " [ el "a" [("href", href (toGroup p nm))] (esc (inlineTex (nameTex nm))) | nm <- ns ]
+    name = esc (inlineTex (displayTex (rName r) (rSpecial r)))
+    -- a dropdown of the entries named and a button to go to the chosen one
+    chooser [] = "—"
+    chooser ns = el "form" [("method", "get"), ("action", ""), ("class", "go")] $ concat
+      [ concat [ hidden k v | (k, v) <- parseQuery (toQuery (toGroup p "")), k /= "db" ]
+      , el "select" [("name", "db")] (concat [ el "option" [("value", nm)] (esc (displayName nm (lookup nm (cxNames cx)))) | nm <- ns ])
+      , "<button type=\"submit\">Go</button>"
+      ]
 
 -- | The right panel in explorer mode: one matrix, multiplied by generators.
 explorer :: Params -> String
@@ -710,33 +718,3 @@ explorer p = concat
     goto q = case q of
       Fin x -> p { pCx = x }
       Inf   -> p { pCx = fromInteger pb }
-
--- | The listing of every group of one level, in the tables' own columns.
-renderLevel :: Int -> [Summary] -> String
-renderLevel lv sms = unlines
-  [ "<!doctype html>"
-  , "<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Congruence subgroups of level " ++ show lv ++ "</title><style>" ++ css ++ "</style>"
-  , katexHead
-  , "</head><body>"
-  , "<header><h1>Congruence subgroups of PSL₂(ℤ) of level " ++ show lv ++ "</h1></header>"
-  , el "div" [("class", "layout"), ("style", "grid-template-columns:1fr")] $ el "div" [("class", "panel")] $
-      el "p" [] (el "a" [("href", "?app=2&lev=" ++ show lv ++ "&by=lev")] "← the tables") ++
-      el "div" [("class", "scrollx")] (el "table" [("class", "kv cp wide")] (concat $
-        el "tr" [] (concatMap (el "th" []) ["Name", "Index", "con", "len", "c₂", "c₃", "Cusps", "Gal", "Supergroups", "Subgroups", ""]) :
-        [ el "tr" [] $ concat
-            [ el "td" [] (el "a" [("href", "?app=2&db=" ++ esc (smName sm))] (esc (inlineTex (nameTex (smName sm))))
-                          ++ maybe "" (\t -> " " ++ el "span" [("class", "muted")] (esc (prettyName t))) (smSpecial sm))
-            , el "td" [] (show (smIndex sm))
-            , el "td" [] (show (smCon sm))
-            , el "td" [] (show (smLen sm))
-            , el "td" [] (show (smE2 sm))
-            , el "td" [] (show (smE3 sm))
-            , el "td" [] (esc (inlineTex (partitionTex (smCusps sm))))
-            , el "td" [] (esc (inlineTex (partitionTex (smGal sm))))
-            , el "td" [] (intercalate " " [ el "a" [("href", "?app=2&db=" ++ esc nm)] (esc (inlineTex (nameTex nm))) | nm <- smSupers sm ])
-            , el "td" [] (intercalate " " [ el "a" [("href", "?app=2&db=" ++ esc nm)] (esc (inlineTex (nameTex nm))) | nm <- smSubs sm ])
-            , el "td" [] (el "a" [("href", "?app=2&db=" ++ esc (smName sm) ++ "&view=disk")] "disk")
-            ]
-        | sm <- sortOn smGenus sms ]))
-  , "</div></body></html>"
-  ]
