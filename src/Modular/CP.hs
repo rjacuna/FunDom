@@ -18,7 +18,8 @@
 -- name (their @11A1@ is a conjugate of Γ₀(11)).
 module Modular.CP
   ( Record(..), parseName, recordFile, parseRecord, findRecord, toSubgroup
-  , Summary(..), scanLevel, scanGenus, prettyName
+  , Summary(..), scanLevel, scanGenus, scanAll, prettyName
+  , Options(..), Filters, filterAndOptions, compactOptions, parseOptions
   , compactRecord, parseCompact, compactSummary, parseSummaries, summaryOf, allRecords, exportJson
   ) where
 
@@ -204,6 +205,52 @@ scanLevel dir lv = filter ((== lv) . smLevel) . concat <$> mapM (\gen -> scanFil
 scanGenus :: FilePath -> Int -> IO [Summary]
 scanGenus dir gen = concat <$> mapM (scanFile dir gen) [0, 8 .. 512]
 
+-- | Every group in the tables. 114 MB of text; the server does this once.
+scanAll :: FilePath -> IO [Summary]
+scanAll dir = concat <$> mapM (scanGenus dir) [0 .. 24]
+
+-- Browsing --------------------------------------------------------------------------
+
+-- | The values each of genus, level and index may take, given the other
+-- two filters — what the dropdowns offer.
+data Options = Options { oGenera, oLevels, oIndices :: [Int] } deriving (Show, Eq)
+
+-- | Chosen genus, level, index, any of them.
+type Filters = (Maybe Int, Maybe Int, Maybe Int)
+
+-- | The groups matching all chosen filters, and the options for each
+-- category given the other two. The JavaScript of the browser build does
+-- the same over its JSON.
+filterAndOptions :: Filters -> [Summary] -> ([Summary], Options)
+filterAndOptions (g, l, i) sms = (matching, Options (distinct smGenus (g', l, i)) (distinct smLevel (g, l', i)) (distinct smIndex (g, l, i')))
+  where
+    matching = [ s | s <- sms, fits (g, l, i) s ]
+    fits (fg, fl, fi) s = maybe True (== smGenus s) fg && maybe True (== smLevel s) fl && maybe True (== smIndex s) fi
+    (g', l', i') = (Nothing, Nothing, Nothing) :: Filters
+    distinct f fs = sortNub [ f s | s <- sms, fits fs s ]
+    sortNub = map head' . groupSorted . sortInts
+    sortInts = foldr insertSorted []
+    insertSorted x [] = [x]
+    insertSorted x (y : ys) | x <= y = x : y : ys
+                            | otherwise = y : insertSorted x ys
+    groupSorted [] = []
+    groupSorted (x : xs) = let (same, rest) = span (== x) xs in (x : same) : groupSorted rest
+    head' (x : _) = x
+    head' [] = 0
+
+-- | @#gen 0 1 2|lev 1 2 3|idx 1 2 6@, the first line of the summaries handed
+-- to the module.
+compactOptions :: Options -> String
+compactOptions o = "#gen " ++ unwords (map show (oGenera o)) ++ "|lev " ++ unwords (map show (oLevels o)) ++ "|idx " ++ unwords (map show (oIndices o))
+
+parseOptions :: String -> Options
+parseOptions txt = case [ l | l <- lines txt, take 1 l == "#" ] of
+  (l : _) -> case splitOn '|' (drop 1 l) of
+    [g, lv, ix] -> Options (nums g) (nums lv) (nums ix)
+    _ -> Options [] [] []
+  [] -> Options [] [] []
+  where nums t = [ read w | w <- drop 1 (words t), all isDigit w, not (null w) ]
+
 scanFile :: FilePath -> Int -> Int -> IO [Summary]
 scanFile dir gen bucket = do
       let path = dir </> ("csg" ++ show gen ++ "-lev" ++ show bucket ++ ".dat")
@@ -261,7 +308,7 @@ compactSummary sm = intercalate "|" [ smName sm, show (smLevel sm), show (smInde
                                     , unwords (map show (smCusps sm)), maybe "" id (smSpecial sm) ]
 
 parseSummaries :: String -> [Summary]
-parseSummaries txt = [ sm | l <- lines txt, Just sm <- [one l] ]
+parseSummaries txt = [ sm | l <- lines txt, take 1 l /= "#", Just sm <- [one l] ]
   where
     one l = case splitOn '|' l of
       [name, lv, ix, gen, cu, sp] | all isDigit lv, all isDigit ix, all isDigit gen, not (null lv) ->

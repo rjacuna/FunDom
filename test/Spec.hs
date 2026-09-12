@@ -372,7 +372,14 @@ checkCP = do
       Left _ -> return False
     lvls <- mapM (\lv -> map ((,) lv) <$> scanLevel "csg" lv) [6, 7, 11, 12]
     rows <- mapM check (concat lvls)
-    return (("parse 11A1", parsed) : ("compact formats round-trip", rt) : rows)
+    sms <- scanGenus "csg" 1
+    let (m, o) = filterAndOptions (Just 1, Just 11, Nothing) sms
+        fo = not (null m) && all (\x -> smGenus x == 1 && smLevel x == 11) m
+             && oIndices o == [12, 55, 60] && 11 `elem` oLevels o && oGenera o == [1]
+             && parseOptions (compactOptions o) == o
+             && parseSummaries (unlines (compactOptions o : map compactSummary m)) `lengthIs` length m
+        lengthIs xs k = length xs == k
+    return (("parse 11A1", parsed) : ("compact formats round-trip", rt) : ("filters and options", fo) : rows)
   where
     check (lv, sm) = do
       r <- findRecord "csg" (smName sm)

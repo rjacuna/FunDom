@@ -10,7 +10,7 @@
 module Web (render, svg, level) where
 
 import GHC.Wasm.Prim
-import Modular.CP (parseCompact, parseSummaries)
+import Modular.CP (parseCompact, parseSummaries, parseOptions)
 import Render.Page
 import Web.Context (Context)
 import Web.Group (contextFrom)
@@ -22,8 +22,9 @@ foreign export javascript "svg sync"    svg    :: JSString -> JSString -> JSStri
 foreign export javascript "level sync"  level  :: JSString -> JSString -> IO JSString
 
 context :: JSString -> JSString -> JSString -> Context
-context q r s = contextFrom (parseParams (parseQuery (fromJSString q))) rec (parseSummaries (fromJSString s))
+context q r s = contextFrom (parseParams (parseQuery (fromJSString q))) rec (parseSummaries txt, parseOptions txt)
   where
+    txt = fromJSString s
     rec = case fromJSString r of
       "" -> Left "choose a group"
       t  -> parseCompact t

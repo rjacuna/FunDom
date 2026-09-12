@@ -31,7 +31,7 @@ import Data.Ratio
 import Flint.Ball
 import Flint.SL2
 import Flint.Z
-import Modular.CP (Summary(..), prettyName)
+import Modular.CP (Summary(..), Options(..), prettyName)
 import Modular.Disk
 import Modular.Domain
 import Modular.Generators (examples, parseGenerators)
@@ -248,6 +248,11 @@ css = unlines
   , ".slider a{flex:1;text-align:center;padding:7px 4px;text-decoration:none;color:#243b6b;font-size:13px;background:#fff;border-right:1px solid #cfd5e5}"
   , ".slider a:last-child{border-right:none} .slider a.on{background:#243b6b;color:#fff}"
   , ".chain{line-height:2.1}.chain a{margin-right:2px}"
+  , ".pills{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px}"
+  , ".pill{display:flex;flex-direction:column;align-items:flex-start;padding:5px 9px;border:1px solid #9aa;border-radius:16px;background:#fff;font-size:13px;color:#123;min-width:64px;text-decoration:none}"
+  , ".pill.on{border-color:#243b6b} .pill.off{color:#aab;background:#f4f4f7;border-color:#d7d7de} a.pill.off:hover{border-color:#9aa;color:#123}"
+  , ".pill small{font-size:10px;color:#667;text-transform:uppercase;letter-spacing:.05em} .pill.off small{color:#aab}"
+  , ".pill select{border:none;background:transparent;font-size:13px;padding:0;margin:0;max-width:220px}"
   , "button{padding:5px 12px;font-size:13px;border-radius:5px;border:1px solid #243b6b;background:#243b6b;color:#fff;margin-top:6px}"
   , "input,select,textarea{font-size:13px;padding:3px 5px;margin:2px 0} input[type=number]{width:5.5em} input.rat{width:8em} input.ent{width:4em}"
   , "textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace}"
@@ -357,29 +362,68 @@ familyControls p = concat
              ++ "  M " ++ btn (href (fresh p) { pM = max 1 (pM p - 1) }) "−" ++ btn (href (fresh p) { pM = pM p + 1 }) "+"
   ]
 
--- | Mode 2: genus → level → index, from the tables, as three dropdowns.
--- Each one submits the form when changed (through @requestSubmit@, so the
--- single-page build sees it as a submit); the button is for browsers
--- without scripts.
+-- | Mode 2: a row of four pills — genus, level, index, group. Each carries a
+-- dropdown once it is in play. Nothing is chosen at first and only one
+-- category is open (genus, unless the URL says @by=lev@ or @by=idx@); the
+-- others are greyed, and clicking a greyed one opens it instead, so a
+-- search can start from any category. A chosen category keeps its dropdown,
+-- now offering only values consistent with the other choices, plus "any"
+-- to drop it. The group pill lists the groups matching every choice.
 browseControls :: Context -> Params -> String
 browseControls cx p = concat
   [ el "h2" [] "Cummins–Pauli tables"
-  , el "p" [("class", "muted")] "All congruence subgroups of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Pick a genus, a level and an index; the groups in that class are listed on the right."
   , el "form" [("method", "get"), ("action", "")] $ concat
       [ hidden "app" "2"
-      , el "label" [] ("genus " ++ dropdown "gen" [ (show g, show g) | g <- [0 .. 24 :: Int] ] (fmap show (pGenus p)) "genus…")
-      , el "label" [] ("level " ++ dropdown "lev" [ (show l, show l) | l <- cxLevels cx ] (fmap show (pLevel p)) (if null (cxLevels cx) then "(choose a genus)" else "level…"))
-      , el "label" [] ("index " ++ dropdown "idx" [ (show i, show i) | i <- cxIndices cx ] (fmap show (pIndex p)) (if null (cxIndices cx) then "(choose a level)" else "index…"))
-      , concat [ hidden k v | (k, v) <- carried p ]
-      , "<button type=\"submit\">Show</button>"
+      , el "div" [("class", "pills")] (concat
+          [ cell "gen" "genus" (pGenus p) (oGenera opts)
+          , cell "lev" "level" (pLevel p) (oLevels opts)
+          , cell "idx" "index" (pIndex p) (oIndices opts)
+          , groupCell ])
+      , concat [ hidden k v | (k, v) <- carried p, k `notElem` ["by"] ]
+      , concat [ hidden "by" b | Just b <- [pBy p] ]
+      , "<noscript><button type=\"submit\">Show</button></noscript>"
       ]
+  , el "p" [("class", "muted")] (if anyChosen
+      then show (length (cxClass cx)) ++ (if length (cxClass cx) == 1 then " group matches." else " groups match.")
+      else "All congruence subgroups of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Choose a genus — or click level or index to start there.")
   , el "h2" [] "Or by name"
   , el "form" [("method", "get"), ("action", "")] $ concat
       [ hidden "app" "2"
       , el "label" [] ("<input class=\"ent\" name=\"db\" placeholder=\"11A1\" value=\"" ++ esc (maybe "" id (pDb p)) ++ "\"> <button type=\"submit\">Load</button>")
-      , concat [ hidden k v | (k, v) <- carried p ]
+      , concat [ hidden k v | (k, v) <- carried p, k `notElem` ["gen", "lev", "idx", "by"] ]
       ]
   ]
+  where
+    opts = cxOptions cx
+    anyChosen = any (/= Nothing) [pGenus p, pLevel p, pIndex p]
+    -- the one unchosen category whose dropdown is open: the chain runs
+    -- genus → level → index by default, or from the category clicked,
+    -- continuing to the right and wrapping round
+    open = case filter unchosen order of
+      (b : _) -> b
+      []      -> ""
+    order = case pBy p of
+      Just "lev" -> ["lev", "idx", "gen"]
+      Just "idx" -> ["idx", "gen", "lev"]
+      _          -> ["gen", "lev", "idx"]
+    unchosen "gen" = pGenus p == Nothing
+    unchosen "lev" = pLevel p == Nothing
+    unchosen "idx" = pIndex p == Nothing
+    unchosen _     = False
+    cell key label chosen values
+      | Just v <- chosen =
+          el "label" [("class", "pill on")] (el "small" [] label ++ dropdownAny key [ (show x, show x) | x <- values ] (show v))
+      | key == open =
+          el "label" [("class", "pill on")] (el "small" [] label ++ dropdown key [ (show x, show x) | x <- values ] Nothing (label ++ "…"))
+      | otherwise =
+          el "a" [("class", "pill off"), ("href", href p { pBy = Just key })] (el "small" [] label ++ el "span" [] "—")
+    groupCell
+      | anyChosen =
+          el "label" [("class", "pill on")] (el "small" [] "group"
+            ++ dropdown "db" [ (smName sm, describe sm) | sm <- cxClass cx ] (pDb p) (if null (cxClass cx) then "no match" else "group…"))
+      | otherwise = el "span" [("class", "pill off")] (el "small" [] "group" ++ el "span" [] "—")
+    describe sm = smName sm ++ maybe "" (\t -> " · " ++ prettyName t) (smSpecial sm)
+                  ++ " · index " ++ show (smIndex sm) ++ ", genus " ++ show (smGenus sm) ++ ", level " ++ show (smLevel sm)
 
 -- | A select that submits its form on change, with a placeholder when
 -- nothing is chosen yet.
@@ -390,6 +434,13 @@ dropdown name opts cur placeholder =
        Just _  -> ""
        Nothing -> "<option value=\"\" selected disabled>" ++ esc placeholder ++ "</option>")
     ++ concat [ "<option value=\"" ++ esc v ++ "\"" ++ (if Just v == cur then " selected" else "") ++ ">" ++ esc label ++ "</option>" | (v, label) <- opts ]
+
+-- | The same, for a chosen category: "any" drops the filter.
+dropdownAny :: String -> [(String, String)] -> String -> String
+dropdownAny name opts cur =
+  el "select" [("name", name), ("onchange", "this.form.requestSubmit()")] $
+    "<option value=\"\">any</option>"
+    ++ concat [ "<option value=\"" ++ esc v ++ "\"" ++ (if v == cur then " selected" else "") ++ ">" ++ esc label ++ "</option>" | (v, label) <- opts ]
 
 -- | Mode 3: generators.
 generatorControls :: Params -> String
@@ -463,7 +514,7 @@ carried p = [ (k, v) | (k, v) <- parseQuery (toQuery p)
 -- | A change of group starts over: no selection, no rearrangements, no
 -- explorer, no table lookup.
 fresh :: Params -> Params
-fresh p = p { pSel = Nothing, pMoves = [], pMode = DomainMode, pDb = Nothing, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing }
+fresh p = p { pSel = Nothing, pMoves = [], pMode = DomainMode, pDb = Nothing, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing, pBy = Nothing }
 
 svgHref :: Params -> String
 svgHref p = "svg?" ++ toQuery p
@@ -472,25 +523,11 @@ svgHref p = "svg?" ++ toQuery p
 
 rightPanel :: Context -> Params -> Either String Built -> String
 rightPanel cx p built = case pApp p of
-  2 -> classSelector cx p ++ either (const "") (infoPanel p) built
+  2 -> either (const (el "p" [("class", "muted")] "Choose a group in the pills on the left, or type its name.")) (infoPanel p) built
   3 -> certificate cx p ++ either (const "") (infoPanel p) built
   _ -> case pMode p of
          TriMode    -> explorer p
          DomainMode -> either (const "") (infoPanel p) built
-
--- | Mode 2: the groups in the chosen class.
-classSelector :: Context -> Params -> String
-classSelector cx p = case (pGenus p, pLevel p, pIndex p) of
-  (Just g, Just l, Just i) -> concat
-    [ el "h2" [] ("Genus " ++ show g ++ ", level " ++ show l ++ ", index " ++ show i)
-    , el "div" [("class", "class")] $ concat
-        [ el "a" [("class", if pDb p == Just (smName sm) then "on" else ""), ("href", href p { pDb = Just (smName sm), pSel = Nothing, pMoves = [] })]
-                 (esc (smName sm) ++ maybe "" (\s -> "  ·  " ++ esc (prettyName s)) (smSpecial sm)
-                  ++ el "span" [("class", "muted")] ("  cusps " ++ unwords (map show (smCusps sm))))
-        | sm <- cxClass cx ]
-    , el "p" [("class", "muted")] "Within a genus and level the letter is a position in their sorted list, not an invariant; the record's generators are what define the group."
-    ]
-  _ -> el "p" [("class", "muted")] "Choose a genus, then a level, then an index."
 
 -- | Mode 3: what the enumeration and Hsu's criterion found.
 certificate :: Context -> Params -> String
@@ -499,36 +536,26 @@ certificate cx p = case cxGroup cx of
   Right sg -> concat
     [ el "h2" [] "Certificate"
     , el "p" [] (either esc (\gs -> esc (inlineTex ("\\left\\langle " ++ intercalate ",\\ " (map texMat gs) ++ "\\right\\rangle"))) (parseGenerators (pGens p)))
-    , case (sgVerdict sg, sgExpect sg) of
-        (Just (lv, verdict), Just ex) -> concat
-          [ el "table" [("class", "kv")] $ concat
-              [ row "index" (show (exIndex ex))
-              , row "generalised level" (show lv ++ "  (lcm of the cusp widths)")
-              , row "cusp widths" (unwords (map show (exCusps ex)))
-              , row "genus" (show (exGenus ex))
-              ]
-          , case verdict of
-              Nothing  -> el "p" [("class", "ok")] ("Congruence: the group contains Γ(" ++ show lv ++ "). Hsu's relations for level " ++ show lv ++ " hold in the coset action.")
-              Just why -> el "p" [("class", "warn")] ("Not congruence: Hsu's relation " ++ esc why ++ " fails in the coset action, so the group does not contain Γ(" ++ show lv ++ "), and by Wohlfahrt's theorem contains no Γ(N) at all.")
-          ]
-        _ -> ""
-    , el "p" [("class", "muted")] "The coset action of PSL₂(ℤ) = ⟨S⟩ * ⟨R⟩ on the subgroup's cosets is found by tracing the generators as loops and closing the table (Todd–Coxeter); the domain below is drawn from that action."
+    , case sgVerdict sg of
+        Just (lv, Nothing)  -> el "p" [("class", "ok")] ("Congruence: the group contains Γ(" ++ show lv ++ "). Hsu's relations for level " ++ show lv ++ " hold in the coset action.")
+        Just (lv, Just why) -> el "p" [("class", "warn")] ("Not congruence: Hsu's relation " ++ esc why ++ " fails in the coset action, so the group does not contain Γ(" ++ show lv ++ "), and by Wohlfahrt's theorem contains no Γ(N) at all.")
+        Nothing -> ""
+    , el "p" [("class", "muted")] "The coset action of PSL₂(ℤ) = ⟨S⟩ * ⟨R⟩ on the subgroup's cosets is found by tracing the generators as loops and closing the table (Todd–Coxeter); the domain is drawn from that action, and the level below is the generalised level, the lcm of the cusp widths."
     ]
-  where
-    row k v = el "tr" [] (el "td" [] (esc k) ++ el "td" [] (esc v))
 
 -- | The invariants and the selected triangle.
 infoPanel :: Params -> Built -> String
 infoPanel p (Built dom inf) = concat
   [ el "h2" [] (esc (subgroupName sg))
   , el "table" [("class", "kv")] $ concat
-      [ row "index" (show n ++ if containsMinusOne sg then "" else " (projective; " ++ show (2 * n) ++ " in SL₂(ℤ), as −I ∉ Γ)")
+      [ row "level" (show (sgLevel sg) ++ (case sgVerdict sg of { Just _ -> " (generalised)"; Nothing -> "" }))
+      , row "index" (show n ++ if containsMinusOne sg then "" else " (projective; " ++ show (2 * n) ++ " in SL₂(ℤ), as −I ∉ Γ)")
       , row "genus" (show (iGenus inf))
       , row "cusps" (show (length (iCusps inf)))
       , row "elliptic" ("order 2: " ++ show (iE2 inf) ++ ", order 3: " ++ show (iE3 inf))
       ]
   , if iEuler inf then "" else el "p" [("class", "warn")] "Euler characteristic is not integral — the table is inconsistent."
-  , checks
+  , mismatch
   , el "h2" [] "Cusps and widths"
   , el "div" [("class", "cusps")] $ unwords
       [ el "a" [("href", href (goto (cValue c) (pScale p))), ("title", "centre on this cusp")]
@@ -542,31 +569,24 @@ infoPanel p (Built dom inf) = concat
     sg = dGroup dom
     n  = size dom
     row k v = el "tr" [] (el "td" [] (esc k) ++ el "td" [] (esc v))
-    -- what the source recorded against what was computed from the domain
-    checks = case sgExpect sg of
+    -- the source's own figures are shown only if they disagree
+    mismatch = case sgExpect sg of
       Nothing -> ""
       Just ex ->
         let ours   = sortDesc (map cWidth (iCusps inf))
             theirs = sortDesc (exCusps ex)
-            hOK    = case sgOrderH sg of
-                       Just h  -> h * n == sl2Order (sgLevel sg)
-                       Nothing -> True
-            line k a b = el "tr" [] (el "td" [] (esc k) ++ el "td" [] (esc a) ++ el "td" [] (esc b)
-                                     ++ el "td" [] (if a == b then "✓" else el "span" [("class", "warn")] "✗"))
-        in el "h2" [] ("Against " ++ esc (exSource ex))
-           ++ el "table" [("class", "kv")] (concat
-                [ el "tr" [] (el "td" [] "" ++ el "td" [] "domain" ++ el "td" [] (esc (exSource ex)) ++ el "td" [] "")
-                , line "index" (show n) (show (exIndex ex))
-                , line "genus" (show (iGenus inf)) (show (exGenus ex))
-                , line "cusp widths" (unwords (map show ours)) (unwords (map show theirs))
-                , line "e₂" (show (iE2 inf)) (show (exE2 ex))
-                , line "e₃" (show (iE3 inf)) (show (exE3 ex))
-                ])
+            diffs  = [ k ++ ": " ++ a ++ " here, " ++ b ++ " in " ++ exSource ex
+                     | (k, a, b) <- [ ("index", show n, show (exIndex ex)), ("genus", show (iGenus inf), show (exGenus ex))
+                                    , ("cusp widths", unwords (map show ours), unwords (map show theirs))
+                                    , ("e₂", show (iE2 inf), show (exE2 ex)), ("e₃", show (iE3 inf), show (exE3 ex)) ]
+                     , a /= b ]
+            hBad = case sgOrderH sg of
+                     Just h | h * n /= sl2Order (sgLevel sg) -> ["|⟨generators, −I⟩| · index ≠ |SL₂(ℤ/N)|"]
+                     _ -> []
+        in concat [ el "p" [("class", "warn")] (esc d) | d <- diffs ++ hBad ]
            ++ (case sgOrderH sg of
-                 Just h -> el "p" [("class", "muted")] ("level " ++ show (sgLevel sg) ++ "; |⟨generators, −I⟩| = " ++ show h ++ " in SL₂(ℤ/" ++ show (sgLevel sg) ++ "), of order "
-                             ++ show (sl2Order (sgLevel sg)) ++ (if hOK then " ✓" else " — does not match the index ✗"))
-                           ++ el "p" [] (el "a" [("href", "csg?level=" ++ show (sgLevel sg))] ("all groups of level " ++ show (sgLevel sg)))
-                           ++ el "p" [("class", "muted")] "The tables list groups up to conjugacy in PGL₂(ℤ); the generators define one representative, which need not be the classical group of the same name."
+                 Just _  -> el "p" [("class", "muted")] ("From the tables, up to conjugacy in PGL₂(ℤ): the record's generators define one representative, which need not be the classical group of the same name. "
+                                                        ++ el "a" [("href", "csg?level=" ++ show (sgLevel sg))] ("All groups of level " ++ show (sgLevel sg) ++ "."))
                  Nothing -> "")
     sortDesc = reverse . sortOn id
     goto q sc = case q of

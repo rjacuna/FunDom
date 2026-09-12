@@ -82,7 +82,7 @@ main = do
     pad n s = s ++ replicate (max 1 (n - length s)) ' '
 
 withParams :: FilePath -> String -> (Context -> IO ()) -> IO ()
-withParams dir q k = resolve dir (parseParams (parseQuery q)) >>= k
+withParams dir q k = resolve dir (scanAll dir) (parseParams (parseQuery q)) >>= k
 
 withGroup :: [String] -> (Domain -> IO ()) -> IO ()
 withGroup args k = case args of

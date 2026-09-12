@@ -56,7 +56,8 @@ data Params = Params
   , pC1, pC2      :: String     -- ^ the two colours of the tessellation
   , pFill2        :: String     -- ^ the second colour of the Γ-tiling
   , pApp          :: Int        -- ^ 1 classical families, 2 the tables, 3 generators
-  , pGenus, pLevel, pIndex :: Maybe Int   -- ^ mode 2: the browsing position
+  , pGenus, pLevel, pIndex :: Maybe Int   -- ^ mode 2: the filters chosen
+  , pBy           :: Maybe String  -- ^ mode 2: the category whose dropdown is open next (gen, lev, idx)
   , pGens         :: String     -- ^ mode 3: the generator box
   } deriving (Show)
 
@@ -72,7 +73,7 @@ defaultParams = Params
   , pAuto = False
   , pDb = Nothing, pView = UHP, pBg = True, pTile = False
   , pC1 = "white", pC2 = "grey", pFill2 = "babyblue"
-  , pApp = 1, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing, pGens = ""
+  , pApp = 1, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing, pBy = Nothing, pGens = ""
   }
 
 -- Colours ----------------------------------------------------------------------
@@ -232,6 +233,9 @@ parseParams kv = Params
   , pGenus = nat "gen"
   , pLevel = nat "lev"
   , pIndex = nat "idx"
+  , pBy    = case get "by" of
+               Just t | t `elem` ["gen", "lev", "idx"] -> Just t
+               _ -> Nothing
   , pGens  = maybe "" (take 4000) (get "gens")
   }
   where
@@ -297,6 +301,7 @@ toQuery p = intercalate "&" [ urlEncode k ++ "=" ++ urlEncode v | (k, v) <- fiel
       , [ ("gen", show g) | Just g <- [pGenus p] ]
       , [ ("lev", show l) | Just l <- [pLevel p] ]
       , [ ("idx", show i) | Just i <- [pIndex p] ]
+      , [ ("by", b) | Just b <- [pBy p] ]
       , [ ("gens", pGens p) | pApp p == 3, not (null (pGens p)) ]
       ]
 

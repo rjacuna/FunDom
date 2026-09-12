@@ -14,7 +14,8 @@ import qualified Data.Text.Encoding.Error as TE
 import Network.HTTP.Types (status200, status404)
 import Network.Wai
 import Network.Wai.Handler.Warp (run)
-import Modular.CP (scanLevel)
+import Data.IORef
+import Modular.CP (Summary, scanAll, scanLevel)
 import Render.Page (renderPage, renderSvgOnly, renderLevel)
 import System.Environment (getArgs)
 import System.IO
@@ -30,12 +31,22 @@ main = do
         _      -> (8080, csgDirDefault)
   hSetBuffering stdout LineBuffering
   putStrLn ("fundom-server: http://localhost:" ++ show port ++ "/   tables: " ++ dir)
-  run port (app dir)
+  -- the tables' summaries, read once, the first time mode 2 asks
+  cache <- newIORef Nothing
+  let loader = do
+        c <- readIORef cache
+        case c of
+          Just sms -> return sms
+          Nothing  -> do
+            sms <- scanAll dir
+            writeIORef cache (Just sms)
+            return sms
+  run port (app dir loader)
 
-app :: FilePath -> Application
-app dir req respond = case pathInfo req of
-  []      -> resolve dir params >>= \cx -> respond (page "text/html; charset=utf-8" (renderPage cx))
-  ["svg"] -> resolve dir params >>= \cx -> respond (page "image/svg+xml; charset=utf-8" (renderSvgOnly cx))
+app :: FilePath -> IO [Summary] -> Application
+app dir loader req respond = case pathInfo req of
+  []      -> resolve dir loader params >>= \cx -> respond (page "text/html; charset=utf-8" (renderPage cx))
+  ["svg"] -> resolve dir loader params >>= \cx -> respond (page "image/svg+xml; charset=utf-8" (renderSvgOnly cx))
   ["csg"] -> case lookup "level" query of
                Just lv | all (`elem` ['0' .. '9']) lv, not (null lv) -> do
                  sms <- scanLevel dir (read lv)
