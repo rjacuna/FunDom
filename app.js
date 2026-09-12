@@ -38,9 +38,12 @@ async function tables() {
 }
 
 // The compact formats Modular.CP parses.
+const count1 = xs => xs.filter(x => x === 1).length;
 const compactRecord  = r => [r.n, r.l, r.i, r.g, r.m, r.mg.map(m => m.join(",")).join(";"),
-                             r.cu.join(" "), r.c2.join(" "), r.c3.join(" "), r.s].join("|");
-const compactSummary = r => [r.n, r.l, r.i, r.g, r.cu.join(" "), r.s].join("|");
+                             r.cu.join(" "), r.c2.join(" "), r.c3.join(" "), r.s,
+                             r.con, r.len, r.gal.join(" "), r.sup.join(" "), r.sub.join(" ")].join("|");
+const compactSummary = r => [r.n, r.l, r.i, r.g, r.cu.join(" "), r.s, r.con, r.len, r.gal.join(" "),
+                             count1(r.c2), count1(r.c3), r.sup.join(" "), r.sub.join(" ")].join("|");
 
 // What the module needs beside the query: in mode 2, one record (the
 // chosen group) and, as one string, the option lists for the dropdowns plus
@@ -49,7 +52,17 @@ const compactSummary = r => [r.n, r.l, r.i, r.g, r.cu.join(" "), r.s].join("|");
 async function inputs(query) {
   const p = new URLSearchParams(query);
   const app = p.get("app") || (p.has("gens") ? "3" : (p.has("db") || p.has("gen") || p.has("lev") || p.has("idx") ? "2" : "1"));
-  if (app !== "2") return { record: "", summaries: "" };
+  if (app !== "2") {
+    // modes 1 and 3: the table entries with this group's genus, level,
+    // index and cusp widths, for the module to compare against
+    const key = (await load()).identifyKey(query.replace(/^\?/, ""));
+    if (!key) return { record: "", summaries: "" };
+    const [g, l, i, ws] = key.split("|");
+    const widths = ws.split(" ").map(Number).sort((a, b) => a - b).join(" ");
+    const data = await tables();
+    const cands = data.filter(x => x.g === +g && x.l === +l && x.i === +i && [...x.cu].sort((a, b) => a - b).join(" ") === widths);
+    return { record: "", summaries: cands.map(r => "!" + compactRecord(r)).join("\n") };
+  }
   const data = await tables();
   const name = (p.get("db") || "").toUpperCase();
   const num = k => (p.get(k) || "") === "" ? null : +p.get(k);
