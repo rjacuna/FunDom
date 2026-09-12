@@ -13,8 +13,15 @@ let csg = null;
 
 async function load() {
   if (hs) return hs;
-  const bytes = await (await fetch("./fundom.wasm")).arrayBuffer();
-  const mod = await WebAssembly.compile(bytes);
+  if (!loading) loading = instantiate();
+  return loading;
+}
+let loading = null;
+async function instantiate() {
+  // compiled as it downloads when the server says application/wasm, else after
+  const mod = WebAssembly.compileStreaming
+    ? await WebAssembly.compileStreaming(fetch("./fundom.wasm")).catch(async () => WebAssembly.compile(await (await fetch("./fundom.wasm")).arrayBuffer()))
+    : await WebAssembly.compile(await (await fetch("./fundom.wasm")).arrayBuffer());
   const { wasi, setMemory } = wasiImports(mod);
   const { default: ghcJsffi } = await import("./fundom.js");
   const jsffi = {};
@@ -121,8 +128,23 @@ function show(html) {
   window.scrollTo(0, 0);
 }
 
+// Pages rendered at build time (window.fundomPre, put in the shell by
+// wasm/shell.py): the default page, the empty tables and generators pages,
+// and the worked examples.  They are shown at once, module or no module.
+const pre = new Map(), preHtml = new Map();
+function preKey(query) {
+  const p = new URLSearchParams(query.replace(/^\?/, ""));
+  return new URLSearchParams([...p.entries()].sort()).toString();
+}
+for (const [q, file] of (window.fundomPre || [])) pre.set(preKey(q), file);
+
 async function render(query) {
-  const p = new URLSearchParams(query);
+  const file = pre.get(preKey(query));
+  if (file !== undefined) {
+    if (!preHtml.has(file)) preHtml.set(file, await (await fetch("./" + file)).text());
+    show(preHtml.get(file));
+    return;
+  }
   spinner();
   await nextFrame();                   // let the spinner paint before the (synchronous) render
   const m = await load();
@@ -165,4 +187,8 @@ document.addEventListener("submit", ev => {
 
 window.addEventListener("popstate", () => render(location.search).catch(fail));
 
-render(location.search).catch(fail);
+// The shell is the default page itself; anything else is rendered now.  The
+// module and the tables load in the background meanwhile, for the first
+// page that needs them.
+if (preKey(location.search) !== preKey("")) render(location.search).catch(fail);
+load().then(tables).catch(() => {});
