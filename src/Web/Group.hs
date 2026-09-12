@@ -10,6 +10,7 @@
 -- them from a JSON export and calls 'contextFrom' directly.
 module Web.Group (resolve, contextFrom, groupOnly, csgDirDefault) where
 
+import Data.List (sortOn)
 import Modular.CP
 import Modular.Domain (enumerate)
 import Modular.Generators
@@ -35,7 +36,7 @@ contextFrom p0 rec (matching, opts) cands names = case pApp p0 of
         grp = case pDb p of
                 Just _  -> toSubgroup <$> rec
                 Nothing -> Left "choose a group"
-    in Context p grp (either (const Nothing) Just rec) opts matching [] names
+    in Context p grp (either (const Nothing) Just rec) opts (sortOn (\s -> (smGenus s, smLevel s, smIndex s, smName s)) matching) [] names
   _ -> Context p0 (Right (subgroup (pG1 p0) (pN p0) (pG2 p0) (pM p0))) Nothing opts [] cands names
 
 -- | The group of modes 1 and 3 alone, for finding its key.

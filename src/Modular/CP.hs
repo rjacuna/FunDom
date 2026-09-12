@@ -231,7 +231,7 @@ prettyName = go
       ((t, r) : _) -> t ++ go r
       []           -> ch : go rest
     table = [ ("\\overline", ""), ("\\Gamma", "Γ"), ("\\cap", "∩"), ("\\pm", "±")
-            , ("_0", "₀"), ("_1", "₁"), ("^0", "⁰"), ("^1", "¹"), ("\\,", " "), ("\\ ", " ") ]
+            , ("_0", "₀"), ("_1", "₁"), ("^0", "⁰"), ("^1", "¹"), ("^2", "²"), ("^3", "³"), ("\\,", " "), ("\\ ", " ") ]
     stripPrefix' pat str = if take (length pat) str == pat then Just (drop (length pat) str) else Nothing
 
 -- | How an entry is named in the interface: its classical name when it has

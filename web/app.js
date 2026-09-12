@@ -88,8 +88,7 @@ async function inputs(query) {
   const header = "#gen " + distinct("g", { ...f, g: null }).join(" ")
                + "|lev " + distinct("l", { ...f, l: null }).join(" ")
                + "|idx " + distinct("i", { ...f, i: null }).join(" ");
-  const anyChosen = f.g !== null || f.l !== null || f.i !== null;
-  const matching = anyChosen ? data.filter(x => fits(x, f)).map(compactSummary) : [];
+  const matching = data.filter(x => fits(x, f)).map(compactSummary);              // every group when nothing is chosen
   return { record, summaries: [header, ...matching, ...names].join("\n") };
 }
 
@@ -132,9 +131,9 @@ function show(html) {
 // wasm/shell.py): the default page, the empty tables and generators pages,
 // and the worked examples.  They are shown at once, module or no module.
 const pre = new Map(), preHtml = new Map();
-function preKey(query) {
+function preKey(query) {                                        // an empty value is the default, as for the module
   const p = new URLSearchParams(query.replace(/^\?/, ""));
-  return new URLSearchParams([...p.entries()].sort()).toString();
+  return new URLSearchParams([...p.entries()].filter(([, v]) => v !== "").sort()).toString();
 }
 for (const [q, file] of (window.fundomPre || [])) pre.set(preKey(q), file);
 

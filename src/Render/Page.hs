@@ -250,9 +250,8 @@ css = unlines
   , ".slider a:last-child{border-right:none} .slider a.on{background:#243b6b;color:#fff}"
   , ".chain{line-height:2.1}.chain a{margin-right:2px}"
   , ".pills{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px}"
-  , ".pill{display:flex;flex-direction:column;align-items:flex-start;padding:5px 9px;border:1px solid #9aa;border-radius:16px;background:#fff;font-size:13px;color:#123;min-width:64px;text-decoration:none}"
-  , ".pill.on{border-color:#243b6b} .pill.off{color:#aab;background:#f4f4f7;border-color:#d7d7de} a.pill.off:hover{border-color:#9aa;color:#123}"
-  , ".pill small{font-size:10px;color:#667;text-transform:uppercase;letter-spacing:.05em} .pill.off small{color:#aab}"
+  , ".pill{display:flex;flex-direction:column;align-items:flex-start;padding:5px 9px;border:1px solid #243b6b;border-radius:16px;background:#fff;font-size:13px;color:#123;min-width:64px;text-decoration:none}"
+  , ".pill small{font-size:10px;color:#667;text-transform:uppercase;letter-spacing:.05em}"
   , ".pill select{border:none;background:transparent;font-size:13px;padding:0;margin:0;max-width:220px}"
   , ".pill input[type=number]{border:none;background:transparent;font-size:13px;padding:0;margin:0;width:4.5em}"
   , ".pill.cap{justify-content:center;align-items:center;min-width:0;padding:5px 7px;border-color:transparent;background:transparent;font-size:15px}"
@@ -374,12 +373,12 @@ familyControls p = concat
   , el "form" [("method", "get"), ("action", "")] $ concat
       -- two rows on one grid: N sits under the first type, M under the second
       [ el "div" [("class", "pills family")] $ concat
-          [ el "label" [("class", "pill on")] (el "small" [] "type" ++ dropdown "g1" [ (typeCode t, typeLabel t "N") | t <- allTypes ] (Just (typeCode (pG1 p))) "")
+          [ el "label" [("class", "pill")] (el "small" [] "type" ++ dropdown "g1" [ (typeCode t, typeLabel t "N") | t <- allTypes ] (Just (typeCode (pG1 p))) "")
           , el "span" [("class", "pill cap")] "∩"
-          , el "label" [("class", "pill on")] (el "small" [] "type" ++ dropdown "g2" [ (typeCode t, typeLabel t "M") | t <- allTypes ] (Just (typeCode (pG2 p))) "")
-          , el "label" [("class", "pill on")] (el "small" [] "N" ++ "<input type=\"number\" name=\"n\" min=\"1\" value=\"" ++ show (pN p) ++ "\" onchange=\"this.form.requestSubmit()\">")
+          , el "label" [("class", "pill")] (el "small" [] "type" ++ dropdown "g2" [ (typeCode t, typeLabel t "M") | t <- allTypes ] (Just (typeCode (pG2 p))) "")
+          , el "label" [("class", "pill")] (el "small" [] "N" ++ "<input type=\"number\" name=\"n\" min=\"1\" value=\"" ++ show (pN p) ++ "\" onchange=\"this.form.requestSubmit()\">")
           , el "span" [("class", "pill cap")] ""
-          , el "label" [("class", "pill on")] (el "small" [] "M" ++ "<input type=\"number\" name=\"m\" min=\"1\" value=\"" ++ show (pM p) ++ "\" onchange=\"this.form.requestSubmit()\">")
+          , el "label" [("class", "pill")] (el "small" [] "M" ++ "<input type=\"number\" name=\"m\" min=\"1\" value=\"" ++ show (pM p) ++ "\" onchange=\"this.form.requestSubmit()\">")
           ]
       , el "label" [] ("scale <input class=\"rat\" name=\"scale\" value=\"" ++ esc (showRat (pScale p)) ++ "\"> px per unit")
       , el "label" [] ("centre <input class=\"rat\" name=\"cx\" value=\"" ++ esc (showRat (pCx p)) ++ "\">")
@@ -408,50 +407,27 @@ browseControls cx p = concat
           [ cell "gen" "genus" (pGenus p) (oGenera opts)
           , cell "lev" "level" (pLevel p) (oLevels opts)
           , cell "idx" "index" (pIndex p) (oIndices opts)
-          , groupCell ])
-      , concat [ hidden k v | (k, v) <- carried p, k `notElem` ["by"] ]
-      , concat [ hidden "by" b | Just b <- [pBy p] ]
+          , el "label" [("class", "pill")] (el "small" [] "group"
+              ++ dropdown "db" [ (smName sm, describe sm) | sm <- cxClass cx ] (pDb p) (if null (cxClass cx) then "no match" else "group…")) ])
+      , concat [ hidden k v | (k, v) <- carried p ]
       , "<noscript><button type=\"submit\">Show</button></noscript>"
       ]
   , el "p" [("class", "muted")] (if anyChosen
-      then show (length (cxClass cx)) ++ (if length (cxClass cx) == 1 then " group matches." else " groups match.")
-      else "All congruence subgroups of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Choose a genus — or click level or index to start there.")
+      then show n ++ (if n == 1 then " group matches." else " groups match.")
+      else show n ++ " groups: every congruence subgroup of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Each choice narrows the others.")
   , el "h2" [] "Or by name"
   , el "form" [("method", "get"), ("action", "")] $ concat
       [ hidden "app" "2"
       , el "label" [] ("<input class=\"ent\" name=\"db\" placeholder=\"11A1\" value=\"" ++ esc (maybe "" id (pDb p)) ++ "\"> <button type=\"submit\">Load</button>")
-      , concat [ hidden k v | (k, v) <- carried p, k `notElem` ["gen", "lev", "idx", "by"] ]
+      , concat [ hidden k v | (k, v) <- carried p, k `notElem` ["gen", "lev", "idx"] ]
       ]
   ]
   where
     opts = cxOptions cx
+    n = length (cxClass cx)
     anyChosen = any (/= Nothing) [pGenus p, pLevel p, pIndex p]
-    -- the one unchosen category whose dropdown is open: the chain runs
-    -- genus → level → index by default, or from the category clicked,
-    -- continuing to the right and wrapping round
-    open = case filter unchosen order of
-      (b : _) -> b
-      []      -> ""
-    order = case pBy p of
-      Just "lev" -> ["lev", "idx", "gen"]
-      Just "idx" -> ["idx", "gen", "lev"]
-      _          -> ["gen", "lev", "idx"]
-    unchosen "gen" = pGenus p == Nothing
-    unchosen "lev" = pLevel p == Nothing
-    unchosen "idx" = pIndex p == Nothing
-    unchosen _     = False
-    cell key label chosen values
-      | Just v <- chosen =
-          el "label" [("class", "pill on")] (el "small" [] label ++ dropdownAny key [ (show x, show x) | x <- values ] (show v))
-      | key == open =
-          el "label" [("class", "pill on")] (el "small" [] label ++ dropdown key [ (show x, show x) | x <- values ] Nothing (label ++ "…"))
-      | otherwise =
-          el "a" [("class", "pill off"), ("href", href p { pBy = Just key })] (el "small" [] label ++ el "span" [] "—")
-    groupCell
-      | anyChosen =
-          el "label" [("class", "pill on")] (el "small" [] "group"
-            ++ dropdown "db" [ (smName sm, describe sm) | sm <- cxClass cx ] (pDb p) (if null (cxClass cx) then "no match" else "group…"))
-      | otherwise = el "span" [("class", "pill off")] (el "small" [] "group" ++ el "span" [] "—")
+    -- every category is a dropdown with "any"; each choice narrows the others' options and the groups offered
+    cell key label chosen values = el "label" [("class", "pill")] (el "small" [] label ++ dropdownAny key [ (show x, show x) | x <- values ] (maybe "" show chosen))
     describe sm = displayName (smName sm) (smSpecial sm)
                   ++ " · index " ++ show (smIndex sm) ++ ", genus " ++ show (smGenus sm) ++ ", level " ++ show (smLevel sm)
 
@@ -545,7 +521,7 @@ carried p = [ (k, v) | (k, v) <- parseQuery (toQuery p)
 -- | A change of group starts over: no selection, no rearrangements, no
 -- explorer, no table lookup, and the picture fitted to the view again.
 fresh :: Params -> Params
-fresh p = p { pSel = Nothing, pMoves = [], pMode = DomainMode, pDb = Nothing, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing, pBy = Nothing
+fresh p = p { pSel = Nothing, pMoves = [], pMode = DomainMode, pDb = Nothing, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing
             , pScale = pScale defaultParams, pCx = 0, pAuto = True }
 
 svgHref :: Params -> String
