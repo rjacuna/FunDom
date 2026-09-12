@@ -34,6 +34,7 @@ usage = unlines
   , "  fundom csg-export                       the tables as JSON on stdout, for the browser build"
   , "  fundom svg   '<query>'                  the picture for a page query, e.g. 'g1=G0&n=11&scale=80'"
   , "  fundom page  '<query>'                  the whole HTML page"
+  , "  fundom prequeries                       the page queries the browser build pre-renders, one per line"
   , "types: G0 = Γ₀, G1 = Γ₁, Gu0 = Γ⁰, Gu1 = Γ¹, G = Γ"
   , "the tables are read from $FUNDOM_CSG, default ./csg" ]
 
@@ -77,6 +78,8 @@ main = do
     ["csg-export"]   -> allRecords dir >>= putStr . exportJson
     ["svg", q]       -> withParams dir q (putStr . renderSvgOnly)
     ["page", q]      -> withParams dir q (putStr . renderPage)
+    -- the pages shown before the module has loaded: the default page (Γ), the empty tables and generators pages, the examples
+    ["prequeries"]   -> mapM_ putStrLn ("" : "app=2" : "app=3" : [ toQuery defaultParams { pApp = 3, pGens = g } | (_, g) <- examples ])
     _                -> hPutStr stderr usage >> exitFailure
   where
     pad n s = s ++ replicate (max 1 (n - length s)) ' '

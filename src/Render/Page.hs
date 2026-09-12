@@ -536,15 +536,17 @@ modeControls p = concat
               ++ toggle (pMode p == TriMode) (href p { pMode = TriMode }) "triangle explorer"
   ]
 
--- | State a GET form must carry, since a submit otherwise resets it.
+-- | State a GET form must carry, since a submit otherwise resets it: the
+-- view settings, but not the zoom, which a new group fits afresh.
 carried :: Params -> [(String, String)]
 carried p = [ (k, v) | (k, v) <- parseQuery (toQuery p)
-            , k `notElem` ["sel", "mv", "n", "m", "g1", "g2", "db", "gens", "app", "gen", "lev", "idx", "mode", "mats", "copy"] ]
+            , k `notElem` ["sel", "mv", "n", "m", "g1", "g2", "db", "gens", "app", "gen", "lev", "idx", "mode", "mats", "copy", "scale", "cx"] ]
 
 -- | A change of group starts over: no selection, no rearrangements, no
--- explorer, no table lookup.
+-- explorer, no table lookup, and the picture fitted to the view again.
 fresh :: Params -> Params
-fresh p = p { pSel = Nothing, pMoves = [], pMode = DomainMode, pDb = Nothing, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing, pBy = Nothing }
+fresh p = p { pSel = Nothing, pMoves = [], pMode = DomainMode, pDb = Nothing, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing, pBy = Nothing
+            , pScale = pScale defaultParams, pCx = 0, pAuto = True }
 
 svgHref :: Params -> String
 svgHref p = "svg?" ++ toQuery p
@@ -654,7 +656,7 @@ infoPanel cx p (Built dom inf) = concat
 
 -- | A link to an entry of the tables, drawn afresh and fitted to the view.
 toGroup :: Params -> String -> Params
-toGroup p nm = (fresh p) { pApp = 2, pDb = Just nm, pScale = 50, pCx = 0, pAuto = True }
+toGroup p nm = (fresh p) { pApp = 2, pDb = Just nm }
 
 -- | The name shown, as TeX: the classical one when there is one, else
 -- @13\mathrm{A}^{24}@ — level, label, genus, as in the tables.
@@ -729,7 +731,7 @@ explorer p = concat
     box k v = "<input class=\"ent\" name=\"" ++ k ++ "\" value=\"" ++ show v ++ "\">"
     keep = if pCopy p then pMats p else init (pMats p)
     carriedTri = [ ("mode", "tri") ] ++ [ ("mats", showMats keep) | not (null keep) ] ++ [ ("copy", "1") | pCopy p ]
-                 ++ [ (k, v) | (k, v) <- carried p ]
+                 ++ [ (k, v) | (k, v) <- carried p ] ++ [ (k, v) | (k, v) <- parseQuery (toQuery p), k `elem` ["scale", "cx"] ]   -- the explorer keeps its view
     next x = p { pMats = keep ++ [x] }
     rights = [ ("MT", genT), ("MT⁻¹", genTinv), ("MS", genS), ("MR", genR) ]
     lefts  = [ ("TM", genT), ("T⁻¹M", genTinv), ("SM", genS), ("RM", genR) ]

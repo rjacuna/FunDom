@@ -3,7 +3,8 @@
 # Build the drawer as a wasm32-wasi reactor module with FLINT linked in.
 #
 #   ./wasm/build-flint-wasi.sh   # once: GMP, MPFR, FLINT for wasm32-wasi
-#   ./wasm/build-web.sh          # the module, its JS glue, and the tables
+#   ./wasm/build-web.sh          # the module, its JS glue, the tables and the pre-rendered pages
+#   ./wasm/build-web.sh pages    # only the tables and the pages (needs the native binary: cabal build)
 #   python3 -m http.server -d web 8092
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -12,8 +13,10 @@ OUT="$ROOT/web"
 BUILD="${FUNDOM_WASM_BUILD:-$HOME/.cache/fundom-wasm}"
 PREFIX="$BUILD/local"
 HS="$BUILD/hs"
-. ~/.ghc-wasm/env
 mkdir -p "$HS" "$OUT"
+
+if [ "${1:-}" != "pages" ]; then
+. ~/.ghc-wasm/env
 
 # the C shims, with the same compiler GHC links with
 wasm32-wasi-clang -O2 -I"$PREFIX/include" -I"$ROOT/cbits" -D_WASI_EMULATED_SIGNAL \
@@ -34,13 +37,23 @@ wasm32-wasi-ghc -O2 -no-hs-main -optl-mexec-model=reactor \
 wasm-opt -Os --enable-bulk-memory --enable-reference-types --enable-simd \
   --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals \
   "$OUT/fundom.wasm" -o "$OUT/fundom.wasm"
+fi
 
-# the tables, and the page shell, from the native binary: index.html is the
-# default page pre-rendered, with a spinner where the picture goes, so the
-# controls are on screen while the module downloads
+# The tables and the pre-rendered pages, from the native binary.  web/pre/
+# holds the pages listed by `fundom prequeries` (the default page, the
+# empty tables and generators pages, the worked examples), which the app
+# shows at once, before the module has loaded; index.html is the default
+# page itself, with the module script and the list of those pages added.
 BIN="$(ls "$ROOT"/dist-newstyle/build/*/ghc-*/fundom-*/x/fundom/build/fundom/fundom 2>/dev/null | head -1)"
 if [ -n "$BIN" ]; then
   [ -d "$ROOT/csg" ] && (cd "$ROOT" && "$BIN" csg-export > "$OUT/csg.json")
-  (cd "$ROOT" && "$BIN" page '') | python3 "$HERE/shell.py" "$OUT/index.html"
+  rm -rf "$OUT/pre"; mkdir -p "$OUT/pre"; : > "$OUT/pre/list.tsv"
+  i=0
+  while IFS= read -r q; do
+    (cd "$ROOT" && "$BIN" page "$q") > "$OUT/pre/$i.html"
+    printf '%s\t%s\n' "pre/$i.html" "$q" >> "$OUT/pre/list.tsv"
+    i=$((i + 1))
+  done < <(cd "$ROOT" && "$BIN" prequeries)
+  (cd "$ROOT" && "$BIN" page '') | python3 "$HERE/shell.py" "$OUT/index.html" "$OUT/pre/list.tsv"
 fi
-ls -la "$OUT"
+ls -la "$OUT" "$OUT/pre"

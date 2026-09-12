@@ -8,3 +8,4 @@ csg/*.tar.gz
 web/fundom.wasm
 web/fundom.js
 web/csg.json
+web/pre/

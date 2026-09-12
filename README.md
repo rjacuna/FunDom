@@ -288,12 +288,15 @@ round-to-nearest, and that module is never called here); and FLINT's
 quadratic sieve wants a temporary file (`mkstemp` is stubbed to fail, and
 the sieve is never called either).
 
-`index.html` is the default page pre-rendered by the native binary, with a
-spinner in place of the picture, so the controls are on screen while the
-module downloads; the script then renders the URL's actual state. Every
-navigation shows the same spinner over the plot while the module works.
+`index.html` is the default page — the full modular group — pre-rendered
+by the native binary, picture included, so it is on screen before the
+module has downloaded; `web/pre/` holds a few more pages rendered the same
+way (`fundom prequeries` lists them: the empty tables and generators pages
+and the worked examples), and the script shows those at once too. The
+module is compiled in the background meanwhile, streamed as it downloads;
+any other page waits for it, with a spinner over the plot while it works.
 
-`app/Web.hs` exports `render`, `svg` and `level`, each taking the query
+`app/Web.hs` exports `render`, `svg` and `identifyKey`, the first two taking the query
 string and — for the tables — one record and the summaries of one genus
 in the compact formats of `Modular.CP`. `web/app.js` owns the URL: it
 intercepts the page's relative links and GET forms, calls the module, and
