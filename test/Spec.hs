@@ -1,4 +1,8 @@
 {-# LANGUAGE TupleSections #-}
+-- FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+-- Copyright (C) 2026 RJ Acuña. Mode 1 derives from Helena A. Verrill's
+-- FunDomain (Copyright (C) 2001, GPL-2.0-or-later); see java/ and README.md.
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- | Checks against closed formulas, table consistency, and the two FLINT
 -- matrix paths against each other. Exits nonzero on any failure.
 module Main (main) where

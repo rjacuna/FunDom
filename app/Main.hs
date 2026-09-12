@@ -1,3 +1,7 @@
+-- FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+-- Copyright (C) 2026 RJ Acuña. Mode 1 derives from Helena A. Verrill's
+-- FunDomain (Copyright (C) 2001, GPL-2.0-or-later); see java/ and README.md.
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- | Command line: the invariants of a group, its coset table, or the page
 -- and picture for a query string — the same query string the server takes.
 module Main (main) where

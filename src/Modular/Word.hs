@@ -1,3 +1,7 @@
+-- FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+-- Copyright (C) 2026 RJ Acuña. Mode 1 derives from Helena A. Verrill's
+-- FunDomain (Copyright (C) 2001, GPL-2.0-or-later); see java/ and README.md.
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- | PSL₂(ℤ) as the free product C₂ * C₃ = ⟨S⟩ * ⟨R⟩, with S = [0 −1; 1 0]
 -- and R = S·T = [0 −1; 1 1]. Every element is a unique reduced word in
 -- S, R, R⁻¹ with no S·S, R·R⁻¹ or R·R·R; this module goes from matrices

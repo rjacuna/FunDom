@@ -8,6 +8,15 @@ Fundamental Domains* (January 2001) — to Haskell, with the numerics in FLINT
 pure library with the mathematics, a thin native server, and a `wasm32-wasi`
 reactor export — here with FLINT linked into the module.
 
+## Licence
+
+GPL-3.0-or-later (`LICENSE`). Mode 1 is a translation of Helena A. Verrill's
+`FunDomain`, which she published under the GNU GPL, version 2 or later
+(Copyright (C) 2001 Helena A. Verrill); her original nine source files, her
+README and her copy of the licence are in `java/`, unchanged. The "or
+later" in her licence is what allows this derivative to be GPL-3.0-or-later;
+FLINT is LGPL-3.0-or-later.
+
 ## Attribution
 
 Mode 1 is Verrill's applet: the five group types and their intersections,
@@ -15,9 +24,10 @@ the breadth-first walk over `T, T⁻¹, S` that lays out one triangle per coset,
 the table of side pairings and the reading of cusps, elliptic points and
 genus from it, the edit mode (redraw a paired triangle across a side) and
 the link mode (curves between paired sides), the triangle explorer with its
-`MT, MS, TM, …` buttons, and the arrangement of the controls. The Java
-source in `../` carries no author line; the attribution is from her
-published algorithm, which the applet implements, and is stated on the page.
+`MT, MS, TM, …` buttons, and the arrangement of the controls. Her published
+source (`java/`, from the copy at wstein.org/Tables/fundomain/) carries the
+copyright and licence notice; the merged single-file copy the port was read
+from had lost it.
 
 What is new here is the implementation and the rest: FLINT for the
 numerics, exact arcs instead of sampled polygons, moves that keep the
@@ -224,7 +234,8 @@ app/Server.hs           fundom-server: warp, no state
 test/Spec.hs
 cbits/fundom_shims.c    allocation, psl2z normal form and entries, matrix entry access; the wasi stubs
 wasm/                   build-flint-wasi.sh, build-web.sh, wasi-compat.h
-web/                    index.html, app.js, wasi-shim.js — plus the built module and tables
+web/                    app.js, wasi-shim.js; index.html, the module and the tables are built
+java/                   Helena A. Verrill's FunDomain, as she published it (GPL-2.0-or-later)
 ```
 
 ## `csg/` — the Cummins–Pauli database
@@ -277,6 +288,11 @@ rounding modes that wasm does not have (the constants are defined to
 round-to-nearest, and that module is never called here); and FLINT's
 quadratic sieve wants a temporary file (`mkstemp` is stubbed to fail, and
 the sieve is never called either).
+
+`index.html` is the default page pre-rendered by the native binary, with a
+spinner in place of the picture, so the controls are on screen while the
+module downloads; the script then renders the URL's actual state. Every
+navigation shows the same spinner over the plot while the module works.
 
 `app/Web.hs` exports `render`, `svg` and `level`, each taking the query
 string and — for the tables — one record and the summaries of one genus

@@ -2,7 +2,9 @@ cabal-version:      2.4
 name:               fundom
 version:            0.1.0.0
 synopsis:           Fundamental domains of congruence subgroups of SL2(Z), on FLINT
-license:            NONE
+license:            GPL-3.0-or-later
+license-file:       LICENSE
+copyright:          2026 RJ Acuña; mode 1 derives from FunDomain, (C) 2001 Helena A. Verrill, GPL-2.0-or-later
 build-type:         Simple
 extra-source-files: cbits/*.h
 

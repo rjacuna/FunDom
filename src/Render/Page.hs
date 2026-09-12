@@ -1,3 +1,7 @@
+-- FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+-- Copyright (C) 2026 RJ Acuña. Mode 1 derives from Helena A. Verrill's
+-- FunDomain (Copyright (C) 2001, GPL-2.0-or-later); see java/ and README.md.
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- | The page: a pure function from a 'Context' to HTML.
 --
 -- Mode 1 reproduces the controls of Helena A. Verrill's Fundamental Domain
@@ -265,7 +269,7 @@ renderPage cx = unlines
   , "<header><h1>Fundamental domains of congruence subgroups of SL₂(ℤ)</h1><span>after Helena A. Verrill's Fundamental Domain Drawer · PSL₂(ℤ) in FLINT · exact arcs · arb vertices</span></header>"
   , "<div class=\"layout\">"
   , el "div" [("class", "panel")] (leftPanel cx p)
-  , el "div" [] (either errorBox renderSvg scene)
+  , el "div" [("id", "plot")] (either errorBox renderSvg scene)
   , el "div" [("class", "panel")] (rightPanel cx p built)
   , "</div></body></html>"
   ]

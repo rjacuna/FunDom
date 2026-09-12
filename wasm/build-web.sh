@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FunDom — Copyright (C) 2026 RJ Acuña. SPDX-License-Identifier: GPL-3.0-or-later
 # Build the drawer as a wasm32-wasi reactor module with FLINT linked in.
 #
 #   ./wasm/build-flint-wasi.sh   # once: GMP, MPFR, FLINT for wasm32-wasi
@@ -34,9 +35,12 @@ wasm-opt -Os --enable-bulk-memory --enable-reference-types --enable-simd \
   --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals \
   "$OUT/fundom.wasm" -o "$OUT/fundom.wasm"
 
-# the tables, if the native binary and the csg/ directory are here
+# the tables, and the page shell, from the native binary: index.html is the
+# default page pre-rendered, with a spinner where the picture goes, so the
+# controls are on screen while the module downloads
 BIN="$(ls "$ROOT"/dist-newstyle/build/*/ghc-*/fundom-*/x/fundom/build/fundom/fundom 2>/dev/null | head -1)"
-if [ -n "$BIN" ] && [ -d "$ROOT/csg" ]; then
-  (cd "$ROOT" && "$BIN" csg-export > "$OUT/csg.json")
+if [ -n "$BIN" ]; then
+  [ -d "$ROOT/csg" ] && (cd "$ROOT" && "$BIN" csg-export > "$OUT/csg.json")
+  (cd "$ROOT" && "$BIN" page '') | python3 "$HERE/shell.py" "$OUT/index.html"
 fi
 ls -la "$OUT"

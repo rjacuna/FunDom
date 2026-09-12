@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FunDom — Copyright (C) 2026 RJ Acuña. SPDX-License-Identifier: GPL-3.0-or-later
 # Build GMP + MPFR + FLINT for wasm32-wasi, with the wasi-sdk that ghc-wasm-meta
 # installs, so they can be linked straight into the GHC reactor module.
 #

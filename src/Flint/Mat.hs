@@ -1,4 +1,8 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
+-- FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+-- Copyright (C) 2026 RJ Acuña. Mode 1 derives from Helena A. Verrill's
+-- FunDomain (Copyright (C) 2001, GPL-2.0-or-later); see java/ and README.md.
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- | Integer and rational matrices on FLINT's @fmpz_mat@ / @fmpq_mat@, typed
 -- correctly for FLINT 3.
 --
@@ -56,14 +60,13 @@ foreign import ccall unsafe "flint/fmpq_mat.h fmpq_mat_rref"       c_qRref  :: P
 newtype ZMat = ZMat [[Integer]] deriving (Eq, Show)
 
 zmat :: [[Integer]] -> Maybe ZMat
-zmat rows
-  | null rows || any null rows           = Nothing
-  | any ((/= length (head rows)) . length) rows = Nothing
-  | otherwise = Just (ZMat rows)
+zmat rows = case rows of
+  (r0 : _) | not (any null rows), all ((== length r0) . length) rows -> Just (ZMat rows)
+  _ -> Nothing
 
 zrows, zcols :: ZMat -> Int
 zrows (ZMat r) = length r
-zcols (ZMat r) = length (head r)
+zcols (ZMat r) = case r of { (r0 : _) -> length r0; [] -> 0 }
 
 zlist :: ZMat -> [[Integer]]
 zlist (ZMat r) = r
@@ -140,14 +143,13 @@ znullspace x = unsafePerformIO $ withZMat x $ \px -> withZNew c c $ \pb -> do
 newtype QMat = QMat [[Rational]] deriving (Eq, Show)
 
 qmat :: [[Rational]] -> Maybe QMat
-qmat rows
-  | null rows || any null rows           = Nothing
-  | any ((/= length (head rows)) . length) rows = Nothing
-  | otherwise = Just (QMat rows)
+qmat rows = case rows of
+  (r0 : _) | not (any null rows), all ((== length r0) . length) rows -> Just (QMat rows)
+  _ -> Nothing
 
 qrows, qcols :: QMat -> Int
 qrows (QMat r) = length r
-qcols (QMat r) = length (head r)
+qcols (QMat r) = case r of { (r0 : _) -> length r0; [] -> 0 }
 
 qlist :: QMat -> [[Rational]]
 qlist (QMat r) = r

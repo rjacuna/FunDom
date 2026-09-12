@@ -1,3 +1,7 @@
+-- FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+-- Copyright (C) 2026 RJ Acuña. Mode 1 derives from Helena A. Verrill's
+-- FunDomain (Copyright (C) 2001, GPL-2.0-or-later); see java/ and README.md.
+-- SPDX-License-Identifier: GPL-3.0-or-later
 -- | Is a finite-index subgroup of PSL₂(ℤ) a congruence subgroup?
 --
 -- Hsu's criterion (T. Hsu, "Identifying congruence subgroups of the

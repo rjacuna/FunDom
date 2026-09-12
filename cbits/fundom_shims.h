@@ -1,3 +1,5 @@
+/* FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+ * Copyright (C) 2026 RJ Acuña. SPDX-License-Identifier: GPL-3.0-or-later */
 #ifndef FUNDOM_SHIMS_H
 #define FUNDOM_SHIMS_H
 #include <flint/flint.h>
