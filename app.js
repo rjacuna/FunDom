@@ -1,3 +1,5 @@
+// FunDom — fundamental domains of congruence subgroups of SL₂(ℤ).
+// Copyright (C) 2026 RJ Acuña. SPDX-License-Identifier: GPL-3.0-or-later
 // The single-page version. The same Haskell that serves the native page is a
 // wasm32-wasi reactor module with three exports — render, svg, level — and
 // this file is the whole difference: it owns the URL, hands the module the
@@ -57,6 +59,18 @@ async function inputs(query) {
   return { record, summaries };
 }
 
+// A spinner where the picture will be: the page shell is already there (it
+// is pre-rendered into index.html at build time), so only the plot waits.
+function spinner() {
+  const plot = document.getElementById("plot");
+  if (!plot) return;
+  const svg = plot.querySelector("svg");
+  const w = svg ? svg.getAttribute("width") : 900, h = svg ? svg.getAttribute("height") : 520;
+  plot.innerHTML = '<div class="plot-wait" style="width:' + w + 'px;height:' + h + 'px"><div class="spin"></div></div>';
+}
+
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
 function show(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   document.title = doc.title || "Fundamental domains";
@@ -69,6 +83,8 @@ function show(html) {
 
 async function render(query) {
   const p = new URLSearchParams(query);
+  spinner();
+  await nextFrame();                   // let the spinner paint before the (synchronous) render
   const m = await load();
   if (p.has("list")) {
     // the listing of one level, a JS-only route
@@ -94,7 +110,8 @@ async function openSvg(query) {
 }
 
 function fail(err) {
-  document.body.innerHTML = '<div style="padding:20px;color:#b00;font-family:sans-serif">' + String(err) + "</div>";
+  const plot = document.getElementById("plot") || document.body;
+  plot.innerHTML = '<div class="panel warn" style="margin:12px">' + String(err) + "</div>";
   console.error(err);
 }
 
