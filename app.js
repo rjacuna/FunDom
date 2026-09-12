@@ -69,7 +69,14 @@ function spinner() {
   plot.innerHTML = '<div class="plot-wait" style="width:' + w + 'px;height:' + h + 'px"><div class="spin"></div></div>';
 }
 
-const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+// A short yield so the spinner paints before the synchronous render. Not
+// requestAnimationFrame alone: that never fires while the tab is hidden.
+const nextFrame = () => new Promise(r => {
+  let done = false;
+  const go = () => { if (!done) { done = true; r(); } };
+  requestAnimationFrame(() => setTimeout(go, 0));
+  setTimeout(go, 60);
+});
 
 function show(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -78,6 +85,7 @@ function show(html) {
   if (!style) { style = document.createElement("style"); style.id = "fundom-style"; document.head.appendChild(style); }
   style.textContent = Array.from(doc.querySelectorAll("style")).map(s => s.textContent).join("\n");
   document.body.innerHTML = doc.body.innerHTML;
+  if (window.fundomMath) window.fundomMath(document.body);   // KaTeX, once it has loaded
   window.scrollTo(0, 0);
 }
 
