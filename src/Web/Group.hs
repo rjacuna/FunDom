@@ -31,13 +31,16 @@ contextFrom p0 rec sms = case pApp p0 of
               (Nothing, Right r) -> p0 { pGenus = Just (rGenus r), pLevel = Just (rLevel r), pIndex = Just (rIndex r) }
               _ -> p0
         levels  = sort (nub (map smLevel sms))
-        atLevel = [ s | s <- sms, Just (smLevel s) == pLevel p ]
+        -- a level or index left over from another genus is no choice at all
+        p'      = p { pLevel = if maybe False (`elem` levels) (pLevel p) then pLevel p else Nothing }
+        atLevel = [ s | s <- sms, Just (smLevel s) == pLevel p' ]
         indices = sort (nub (map smIndex atLevel))
-        cls     = [ s | s <- atLevel, Just (smIndex s) == pIndex p ]
-        grp     = case pDb p of
+        p''     = p' { pIndex = if maybe False (`elem` indices) (pIndex p') then pIndex p' else Nothing }
+        cls     = [ s | s <- atLevel, Just (smIndex s) == pIndex p'' ]
+        grp     = case pDb p'' of
                     Just _  -> toSubgroup <$> rec
                     Nothing -> Left "choose a group"
-    in Context p grp levels indices cls
+    in Context p'' grp levels indices cls
   _ -> Context p0 (Right (subgroup (pG1 p0) (pN p0) (pG2 p0) (pM p0))) [] [] []
 
 resolve :: FilePath -> Params -> IO Context

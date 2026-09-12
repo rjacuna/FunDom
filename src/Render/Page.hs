@@ -34,10 +34,10 @@ import Flint.Z
 import Modular.CP (Summary(..), prettyName)
 import Modular.Disk
 import Modular.Domain
-import Modular.Generators (examples)
+import Modular.Generators (examples, parseGenerators)
 import Modular.Geometry
 import Modular.Group
-import Modular.Word (showWord, wordOf)
+import Modular.Word (wordOf)
 import Render.Svg
 import Web.Context
 import Web.Params
@@ -261,11 +261,42 @@ css = unlines
   , "@media (max-width:1150px){.layout{grid-template-columns:1fr}}"
   ]
 
+-- | KaTeX from a CDN, rendering @\\( … \\)@ once loaded. The single-page
+-- build calls @renderMathInElement@ again after every render.
+katexHead :: String
+katexHead = unlines
+  [ "<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\" crossorigin=\"anonymous\">"
+  , "<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js\" crossorigin=\"anonymous\"></script>"
+  , "<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js\" crossorigin=\"anonymous\""
+    ++ " onload=\"window.fundomMath=function(el){renderMathInElement(el,{delimiters:[{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false})};fundomMath(document.body)\"></script>"
+  ]
+
+-- | A matrix, for KaTeX.
+texMat :: SL2 -> String
+texMat g = "\\begin{pmatrix}" ++ show a' ++ "&" ++ show b' ++ "\\\\" ++ show c' ++ "&" ++ show d' ++ "\\end{pmatrix}"
+  where (a', b', c', d') = entries g
+
+-- | A word in S and R, for KaTeX.
+texWord :: SL2 -> String
+texWord g = case wordOf g of
+  [] -> "1"
+  w  -> intercalate "\\," (map letter w)
+  where
+    letter l = case show l of
+      "LS"  -> "S"
+      "LR"  -> "R"
+      _     -> "R^{-1}"
+
+inlineTex :: String -> String
+inlineTex t = "\\(" ++ t ++ "\\)"
+
 renderPage :: Context -> String
 renderPage cx = unlines
   [ "<!doctype html>"
   , "<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-  , "<title>Fundamental domains</title><style>" ++ css ++ "</style></head><body>"
+  , "<title>Fundamental domains</title><style>" ++ css ++ "</style>"
+  , katexHead
+  , "</head><body>"
   , "<header><h1>Fundamental domains of congruence subgroups of SL₂(ℤ)</h1><span>after Helena A. Verrill's Fundamental Domain Drawer · PSL₂(ℤ) in FLINT · exact arcs · arb vertices</span></header>"
   , "<div class=\"layout\">"
   , el "div" [("class", "panel")] (leftPanel cx p)
@@ -326,22 +357,22 @@ familyControls p = concat
              ++ "  M " ++ btn (href (fresh p) { pM = max 1 (pM p - 1) }) "−" ++ btn (href (fresh p) { pM = pM p + 1 }) "+"
   ]
 
--- | Mode 2: genus → level → index, from the tables.
+-- | Mode 2: genus → level → index, from the tables, as three dropdowns.
+-- Each one submits the form when changed (through @requestSubmit@, so the
+-- single-page build sees it as a submit); the button is for browsers
+-- without scripts.
 browseControls :: Context -> Params -> String
 browseControls cx p = concat
   [ el "h2" [] "Cummins–Pauli tables"
-  , el "p" [("class", "muted")] "All congruence subgroups of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Pick a genus, a level, an index; the groups in that class are listed on the right."
-  , el "h2" [] "Genus"
-  , el "div" [("class", "chain")] $ concat
-      [ toggle (pGenus p == Just g) (href (fresh p) { pApp = 2, pGenus = Just g }) (show g) | g <- [0 .. 24] ]
-  , case pGenus p of
-      Nothing -> ""
-      Just _  -> el "h2" [] "Level" ++ el "div" [("class", "chain")] (concat
-        [ toggle (pLevel p == Just l) (href (fresh p) { pApp = 2, pGenus = pGenus p, pLevel = Just l }) (show l) | l <- cxLevels cx ])
-  , case (pGenus p, pLevel p) of
-      (Just _, Just _) -> el "h2" [] "Index" ++ el "div" [("class", "chain")] (concat
-        [ toggle (pIndex p == Just i) (href (fresh p) { pApp = 2, pGenus = pGenus p, pLevel = pLevel p, pIndex = Just i }) (show i) | i <- cxIndices cx ])
-      _ -> ""
+  , el "p" [("class", "muted")] "All congruence subgroups of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Pick a genus, a level and an index; the groups in that class are listed on the right."
+  , el "form" [("method", "get"), ("action", "")] $ concat
+      [ hidden "app" "2"
+      , el "label" [] ("genus " ++ dropdown "gen" [ (show g, show g) | g <- [0 .. 24 :: Int] ] (fmap show (pGenus p)) "genus…")
+      , el "label" [] ("level " ++ dropdown "lev" [ (show l, show l) | l <- cxLevels cx ] (fmap show (pLevel p)) (if null (cxLevels cx) then "(choose a genus)" else "level…"))
+      , el "label" [] ("index " ++ dropdown "idx" [ (show i, show i) | i <- cxIndices cx ] (fmap show (pIndex p)) (if null (cxIndices cx) then "(choose a level)" else "index…"))
+      , concat [ hidden k v | (k, v) <- carried p ]
+      , "<button type=\"submit\">Show</button>"
+      ]
   , el "h2" [] "Or by name"
   , el "form" [("method", "get"), ("action", "")] $ concat
       [ hidden "app" "2"
@@ -349,6 +380,16 @@ browseControls cx p = concat
       , concat [ hidden k v | (k, v) <- carried p ]
       ]
   ]
+
+-- | A select that submits its form on change, with a placeholder when
+-- nothing is chosen yet.
+dropdown :: String -> [(String, String)] -> Maybe String -> String -> String
+dropdown name opts cur placeholder =
+  el "select" [("name", name), ("onchange", "this.form.requestSubmit()")] $
+    (case cur of
+       Just _  -> ""
+       Nothing -> "<option value=\"\" selected disabled>" ++ esc placeholder ++ "</option>")
+    ++ concat [ "<option value=\"" ++ esc v ++ "\"" ++ (if Just v == cur then " selected" else "") ++ ">" ++ esc label ++ "</option>" | (v, label) <- opts ]
 
 -- | Mode 3: generators.
 generatorControls :: Params -> String
@@ -385,7 +426,7 @@ viewControls cx p = concat
                    [ el "label" [] ("tessellation " ++ select "c1" [ (c', c') | c' <- colourNames ] (pC1 p) ++ " / " ++ select "c2" [ (c', c') | c' <- colourNames ] (pC2 p))
                    , el "label" [] ("translates " ++ select "fill" [ (c', c') | c' <- colourNames ] (pFill p) ++ " / " ++ select "fill2" [ (c', c') | c' <- colourNames ] (pFill2 p))
                    , concat [ hidden k v' | (k, v') <- parseQuery (toQuery p), k `notElem` ["c1", "c2", "fill", "fill2"] ]
-                   , "<button type=\"submit\">Colours</button>" ])
+                   , "<button type=\"submit\">Change Colors</button>" ])
   ]
   where
     pan k = p { pCx = pCx p + fromIntegral (k :: Int) * (fromIntegral (pW p) / 8) / pScale p }
@@ -453,10 +494,11 @@ classSelector cx p = case (pGenus p, pLevel p, pIndex p) of
 
 -- | Mode 3: what the enumeration and Hsu's criterion found.
 certificate :: Context -> Params -> String
-certificate cx _ = case cxGroup cx of
+certificate cx p = case cxGroup cx of
   Left err -> el "h2" [] "Certificate" ++ el "p" [("class", "warn")] (esc err)
   Right sg -> concat
     [ el "h2" [] "Certificate"
+    , el "p" [] (either esc (\gs -> esc (inlineTex ("\\left\\langle " ++ intercalate ",\\ " (map texMat gs) ++ "\\right\\rangle"))) (parseGenerators (pGens p)))
     , case (sgVerdict sg, sgExpect sg) of
         (Just (lv, verdict), Just ex) -> concat
           [ el "table" [("class", "kv")] $ concat
@@ -532,7 +574,7 @@ infoPanel p (Built dom inf) = concat
       Inf   -> p { pCx = 0, pScale = sc }
     selected i = concat
       [ el "h2" [] ("Triangle #" ++ show i)
-      , el "p" [("class", "mat")] (esc (showMat g) ++ "  =  " ++ esc (showWord (wordOf g)))
+      , el "p" [] (esc (inlineTex (texMat g ++ " = " ++ texWord g)))
       , el "table" [("class", "kv")] $ concat $
           row "cusp" (showQI (cusp g)) :
           [ el "tr" [] (el "td" [] (esc (sideName gen)) ++ el "td" [] (pair gen)) | gen <- gens ]
@@ -556,7 +598,8 @@ explorer p = concat
   [ el "h2" [] "Triangle explorer"
   , el "p" [("class", "muted")] "The triangle M·F for a matrix M, and its neighbours under the generators. “move” replaces it, “copy” keeps the previous ones."
   , el "form" [("method", "get"), ("action", "")] $ concat
-      [ el "p" [("class", "mat")] $ "M = [ " ++ box "a" pa ++ " " ++ box "b" pb ++ " ; " ++ box "c" pc ++ " " ++ box "d" pd ++ " ]"
+      [ el "p" [] (esc (inlineTex ("M = " ++ texMat m ++ " = " ++ texWord m)))
+      , el "p" [("class", "mat")] $ "[ " ++ box "a" pa ++ " " ++ box "b" pb ++ " ; " ++ box "c" pc ++ " " ++ box "d" pd ++ " ]"
       , concat [ hidden k v | (k, v) <- carriedTri ]
       , "<button type=\"submit\">Draw triangle</button>"
       ]
@@ -567,7 +610,7 @@ explorer p = concat
       ]
   , el "p" [] $ btn (href p { pMats = [identity] }) "M = Id" ++ btn (href (goto (cusp m))) "centre" ++ btn (href p { pMode = DomainMode }) "back to the domain"
   , el "h2" [] "Drawn"
-  , el "div" [("class", "mat")] (intercalate "<br>" [ esc (showMat x) ++ "  =  " ++ esc (showWord (wordOf x)) | x <- pMats p ])
+  , el "div" [] (intercalate "<br>" [ esc (inlineTex (texMat x ++ " = " ++ texWord x)) | x <- pMats p ])
   ]
   where
     m = last (pMats p)
