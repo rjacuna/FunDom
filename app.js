@@ -42,25 +42,36 @@ const compactRecord  = r => [r.n, r.l, r.i, r.g, r.m, r.mg.map(m => m.join(","))
                              r.cu.join(" "), r.c2.join(" "), r.c3.join(" "), r.s].join("|");
 const compactSummary = r => [r.n, r.l, r.i, r.g, r.cu.join(" "), r.s].join("|");
 
-// What the module needs beside the query: one record and the summaries of
-// one genus, or nothing.
+// What the module needs beside the query: in mode 2, one record (the
+// chosen group) and, as one string, the option lists for the dropdowns plus
+// the summaries of every group matching the chosen filters — the same
+// computation as Modular.CP.filterAndOptions, over the JSON.
 async function inputs(query) {
   const p = new URLSearchParams(query);
-  const app = p.get("app") || (p.has("gens") ? "3" : (p.has("db") || p.has("gen") ? "2" : "1"));
+  const app = p.get("app") || (p.has("gens") ? "3" : (p.has("db") || p.has("gen") || p.has("lev") || p.has("idx") ? "2" : "1"));
   if (app !== "2") return { record: "", summaries: "" };
   const data = await tables();
   const name = (p.get("db") || "").toUpperCase();
-  let record = "", genus = p.get("gen");
+  const num = k => (p.get(k) || "") === "" ? null : +p.get(k);
+  let f = { g: num("gen"), l: num("lev"), i: num("idx") };
+  let record = "";
   if (name) {
     const r = data.find(x => x.n === name);
-    if (r) { record = compactRecord(r); if (genus === null) genus = String(r.g); }
+    if (r) {
+      record = compactRecord(r);
+      if (f.g === null && f.l === null && f.i === null) f = { g: r.g, l: r.l, i: r.i };
+    }
   }
-  const summaries = genus === null ? "" : data.filter(x => x.g === +genus).map(compactSummary).join("\n");
-  return { record, summaries };
+  const fits = (x, ff) => (ff.g === null || x.g === ff.g) && (ff.l === null || x.l === ff.l) && (ff.i === null || x.i === ff.i);
+  const distinct = (key, ff) => [...new Set(data.filter(x => fits(x, ff)).map(x => x[key]))].sort((a, b) => a - b);
+  const header = "#gen " + distinct("g", { ...f, g: null }).join(" ")
+               + "|lev " + distinct("l", { ...f, l: null }).join(" ")
+               + "|idx " + distinct("i", { ...f, i: null }).join(" ");
+  const anyChosen = f.g !== null || f.l !== null || f.i !== null;
+  const matching = anyChosen ? data.filter(x => fits(x, f)).map(compactSummary) : [];
+  return { record, summaries: [header, ...matching].join("\n") };
 }
 
-// A spinner where the picture will be: the page shell is already there (it
-// is pre-rendered into index.html at build time), so only the plot waits.
 function spinner() {
   const plot = document.getElementById("plot");
   if (!plot) return;
