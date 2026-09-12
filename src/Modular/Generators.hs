@@ -61,16 +61,19 @@ groupFromGenerators gs = case enumerateMatrices gs of
                                    , exE2 = e2, exE3 = e3, exSpecial = Nothing }
          , sgVerdict = Just (lv, case verdict of { Congruence -> Nothing; NotCongruence why -> Just why }) }
 
--- | Worked examples for the generator box: a KaTeX label and the generators.
+-- | Worked examples for the generator box: the generators, as KaTeX, and
+-- the text for the box. What they generate is for the info panel to say.
 examples :: [(String, String)]
-examples =
-  [ ("\\Gamma_0(2) = \\left\\langle T,\\ " ++ sm [1, 0, 2, 1] ++ "\\right\\rangle", "1 1 0 1\n1 0 2 1")
-  , ("\\Gamma(2) = \\left\\langle T^2,\\ " ++ sm [1, 0, 2, 1] ++ "\\right\\rangle", "1 2 0 1\n1 0 2 1")
-  , ("\\Gamma_0(11)\\text{, from the side pairings of its domain}", "1 1 0 1\n-5 -1 11 2\n-4 1 11 -3\n-3 1 11 -4\n-2 -1 11 5\n3 1 11 4\n4 1 11 3")
-  , ("\\text{index 7, not congruence: }\\left\\langle " ++ intercalate ",\\ " (map sm [[2, -1, 1, 0], [0, -1, 1, -2], [-1, -2, 1, 1], [-1, -1, 3, 2]]) ++ "\\right\\rangle",
-     "2 -1 1 0\n0 -1 1 -2\n-1 -2 1 1\n-1 -1 3 2")
-  ]
+examples = [ (angle mats, unlines' mats) | mats <- sets ]
   where
+    sets =
+      [ [[1, 1, 0, 1], [1, 0, 2, 1]]                                     -- Γ₀(2)
+      , [[1, 2, 0, 1], [1, 0, 2, 1]]                                     -- Γ(2)
+      , [[1, 1, 0, 1], [-5, -1, 11, 2], [-4, 1, 11, -3], [-3, 1, 11, -4], [-2, -1, 11, 5], [3, 1, 11, 4], [4, 1, 11, 3]]  -- Γ₀(11), its side pairings
+      , [[2, -1, 1, 0], [0, -1, 1, -2], [-1, -2, 1, 1], [-1, -1, 3, 2]]  -- index 7, not congruence
+      ]
+    angle ms = "\\left\\langle " ++ intercalate ",\\ " (map sm ms) ++ "\\right\\rangle"
+    unlines' ms = intercalate "\n" [ unwords (map show m) | m <- ms ]
     sm :: [Int] -> String
     sm [a, b, c, d] = "\\left(\\begin{smallmatrix}" ++ show a ++ "&" ++ show b ++ "\\\\" ++ show c ++ "&" ++ show d ++ "\\end{smallmatrix}\\right)"
     sm _ = ""
