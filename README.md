@@ -98,8 +98,13 @@ pairings (which generate Γ), coloured by the parity of the word length, with
 every translate's boundary drawn through. Both are on to begin with, so the
 first thing one sees is Γ tiling the disk over the modular tessellation.
 Colours are `c1`/`c2` for the tessellation and `fill`/`fill2` for the
-translates, banana and chocolate to begin with; `view=uhp` goes back to the
-half-plane, `tile=0` and `bg=0` turn the two tilings off. The cusps sit on the
+translates, banana and chocolate to begin with, with `outline` for the sides;
+`view=uhp` goes back to the half-plane, `tile=0` and `bg=0` turn the two
+tilings off.
+
+Each view keeps its own settings under **View**, and only while it is the one
+shown: the half-plane its scale, centre and the domain's two colours, the
+disk its two tilings and their colours. **Group** is the group alone. The cusps sit on the
 circle, so nothing is truncated.
 
 Everything is in the URL. There is no JavaScript: every control is a link

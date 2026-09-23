@@ -380,11 +380,7 @@ familyControls p = concat
           , el "span" [("class", "pill cap")] ""
           , el "label" [("class", "pill")] (el "small" [] "M" ++ "<input type=\"number\" name=\"m\" min=\"1\" value=\"" ++ show (pM p) ++ "\" onchange=\"this.form.requestSubmit()\">")
           ]
-      , el "label" [] ("scale <input class=\"rat\" name=\"scale\" value=\"" ++ esc (showRat (pScale p)) ++ "\"> px per unit")
-      , el "label" [] ("centre <input class=\"rat\" name=\"cx\" value=\"" ++ esc (showRat (pCx p)) ++ "\">")
-      , el "label" [] ("fill " ++ select "fill" [ (c', c') | c' <- colourNames ] (pFill p))
-      , el "label" [] ("outline " ++ select "outline" [ (c', c') | c' <- colourNames ] (pOutline p))
-      , concat [ hidden k v | (k, v) <- carried p, k `notElem` ["scale", "cx", "fill", "outline"] ]
+      , concat [ hidden k v | (k, v) <- carried p ]
       , "<button type=\"submit\">Draw</button>"
       ]
   , el "p" [] $ "N " ++ btn (href (fresh p) { pN = max 1 (pN p - 1) }) "−" ++ btn (href (fresh p) { pN = pN p + 1 }) "+"
@@ -477,15 +473,24 @@ viewControls cx p = concat
              ++ el "p" [] (concat
                [ btn (href p { pScale = pScale p * 2 }) "zoom in", btn (href p { pScale = pScale p / 2 }) "zoom out"
                , btn (href p { pScale = 50, pCx = 0 }) "reset", fitBtn ])
+             ++ el "form" [("method", "get"), ("action", "")] (concat
+                  [ el "label" [] ("scale <input class=\"rat\" name=\"scale\" value=\"" ++ esc (showRat (pScale p)) ++ "\"> px per unit")
+                  , el "label" [] ("centre <input class=\"rat\" name=\"cx\" value=\"" ++ esc (showRat (pCx p)) ++ "\">")
+                  , el "label" [] ("domain " ++ select "fill" [ (c', c') | c' <- colourNames ] (pFill p) ++ " / " ++ select "outline" [ (c', c') | c' <- colourNames ] (pOutline p))
+                  , carry ["scale", "cx", "fill", "outline"]
+                  , "<button type=\"submit\">Draw</button>" ])
       Disk -> el "p" [] (toggle (pBg p) (href p { pBg = not (pBg p) }) "modular tessellation"
                          ++ toggle (pTile p) (href p { pTile = not (pTile p) }) "tile by Γ")
               ++ el "form" [("method", "get"), ("action", "")] (concat
                    [ el "label" [] ("tessellation " ++ select "c1" [ (c', c') | c' <- colourNames ] (pC1 p) ++ " / " ++ select "c2" [ (c', c') | c' <- colourNames ] (pC2 p))
                    , el "label" [] ("translates " ++ select "fill" [ (c', c') | c' <- colourNames ] (pFill p) ++ " / " ++ select "fill2" [ (c', c') | c' <- colourNames ] (pFill2 p))
-                   , concat [ hidden k v' | (k, v') <- parseQuery (toQuery p), k `notElem` ["c1", "c2", "fill", "fill2"] ]
+                   , el "label" [] ("outline " ++ select "outline" [ (c', c') | c' <- colourNames ] (pOutline p))
+                   , carry ["c1", "c2", "fill", "fill2", "outline"]
                    , "<button type=\"submit\">Change Colors</button>" ])
   ]
   where
+    -- a GET form resets what it does not carry, so every field it does not own is hidden in it
+    carry own = concat [ hidden k v | (k, v) <- parseQuery (toQuery p), k `notElem` own ]
     pan k = p { pCx = pCx p + fromIntegral (k :: Int) * (fromIntegral (pW p) / 8) / pScale p }
     fitBtn = case build cx of
       Right (Built dom _) | pMode p == DomainMode ->
