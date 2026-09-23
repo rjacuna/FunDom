@@ -131,9 +131,15 @@ function show(html) {
 // wasm/shell.py): the default page, the empty tables and generators pages,
 // and the worked examples.  They are shown at once, module or no module.
 const pre = new Map(), preHtml = new Map();
+// The module's own links leave out whatever is at its default, but a GET form
+// submits every field it holds, so `?g1=G0&g2=G0&n=5&m=1` and `?n=5` are the
+// same page.  These four defaults (Web.Params.defaultParams) are dropped so
+// that both find the page; they are the group's own, and structural.
+const preDefaults = { g1: "G0", g2: "G0", n: "1", m: "1", app: "1" };
 function preKey(query) {                                        // an empty value is the default, as for the module
   const p = new URLSearchParams(query.replace(/^\?/, ""));
-  return new URLSearchParams([...p.entries()].filter(([, v]) => v !== "").sort()).toString();
+  const kept = [...p.entries()].filter(([k, v]) => v !== "" && v !== preDefaults[k]);
+  return new URLSearchParams(kept.sort()).toString();
 }
 for (const [q, file] of (window.fundomPre || [])) pre.set(preKey(q), file);
 
