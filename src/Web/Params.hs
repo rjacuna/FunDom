@@ -66,12 +66,12 @@ defaultParams = Params
   , pScale = 50, pCx = 0
   , pEdit = False, pLinks = False, pCuspLabels = True
   , pSel = Nothing, pMoves = []
-  , pFill = "red", pOutline = "black"
+  , pFill = "banana", pOutline = "black"
   , pMode = DomainMode, pMats = [identity], pCopy = False
   , pW = 900, pH = 520
   , pAuto = False
-  , pDb = Nothing, pView = UHP, pBg = True, pTile = False
-  , pC1 = "white", pC2 = "grey", pFill2 = "babyblue"
+  , pDb = Nothing, pView = Disk, pBg = True, pTile = True
+  , pC1 = "white", pC2 = "grey", pFill2 = "chocolate"
   , pApp = 1, pGenus = Nothing, pLevel = Nothing, pIndex = Nothing, pGens = ""
   }
 
@@ -203,7 +203,7 @@ parseParams kv = Params
                Just s | all isDigit s && not (null s) -> Just (read s)
                _ -> Nothing
   , pMoves = maybe [] readMoves (get "mv")
-  , pFill    = colour "fill" "red"
+  , pFill    = colour "fill" "banana"
   , pOutline = colour "outline" "black"
   , pMode  = if get "mode" == Just "tri" then TriMode else DomainMode
   , pMats  = case maybe [] readMats (get "mats") ++ maybe [] (: []) newMat of
@@ -216,12 +216,12 @@ parseParams kv = Params
   , pDb    = case get "db" of
                Just t | not (null t), all (\ch -> isAlphaNum ch && ord ch < 128) t -> Just (map toUpper t)
                _ -> Nothing
-  , pView  = if get "view" == Just "disk" then Disk else UHP
+  , pView  = if get "view" == Just "uhp" then UHP else Disk   -- "disk" too, for the links written before it was the default
   , pBg    = flag "bg" True
-  , pTile  = flag "tile" False
+  , pTile  = flag "tile" True
   , pC1    = colour "c1" "white"
   , pC2    = colour "c2" "grey"
-  , pFill2 = colour "fill2" "babyblue"
+  , pFill2 = colour "fill2" "chocolate"
   , pApp   = case get "app" of
                Just "2" -> 2
                Just "3" -> 3
@@ -287,9 +287,9 @@ toQuery p = intercalate "&" [ urlEncode k ++ "=" ++ urlEncode v | (k, v) <- fiel
       , [ ("w", show (pW p)) | pW p /= pW d ]
       , [ ("h", show (pH p)) | pH p /= pH d ]
       , [ ("db", n) | Just n <- [pDb p] ]
-      , [ ("view", "disk") | pView p == Disk ]
+      , [ ("view", "uhp") | pView p == UHP ]
       , [ ("bg", "0") | not (pBg p) ]
-      , [ ("tile", "1") | pTile p ]
+      , [ ("tile", "0") | not (pTile p) ]
       , [ ("c1", pC1 p) | pC1 p /= pC1 d ]
       , [ ("c2", pC2 p) | pC2 p /= pC2 d ]
       , [ ("fill2", pFill2 p) | pFill2 p /= pFill2 d ]

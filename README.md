@@ -54,7 +54,8 @@ cabal run fundom-server -- 8091 csg       # http://localhost:8091/?g1=G0&n=11&li
 
 Types on the command line and in URLs: `G0` Γ₀, `G1` Γ₁, `Gu0` Γ⁰, `Gu1` Γ¹,
 `G` Γ. Two groups intersect: `?g1=Gu0&n=6&g2=G1&m=4`. A Cummins–Pauli name
-overrides both: `?db=11A1`. `?view=disk` is the disk.
+overrides both: `?db=11A1`. The disk is the view it opens in; `?view=uhp` is
+the upper half-plane.
 
 ## What it does
 
@@ -88,14 +89,17 @@ cusp — gets a grey marker and cannot be moved. "Triangle explorer" draws
 `M·F` for a typed-in matrix and its neighbours under `T, T⁻¹, S, R`, on the
 left or the right.
 
-**The disk.** `view=disk` draws the same domain under the Cayley transform
-`z ↦ (z − i)/(z + i)`, behind it the classic two-coloured (2,3,∞)
+**The disk**, which is what opens. It draws the domain under the Cayley
+transform `z ↦ (z − i)/(z + i)`, behind it the classic two-coloured (2,3,∞)
 tessellation of the disk — the images of the half-triangle `{i, ρ, ∞}`
 under PSL₂(ℤ) in one colour over a disk of the other — and, with "tile by
 Γ", the disk filled by Γ-translates of the domain: words in the side
 pairings (which generate Γ), coloured by the parity of the word length, with
-every translate's boundary drawn through. Colours are `c1`/`c2` for the
-tessellation and `fill`/`fill2` for the translates. The cusps sit on the
+every translate's boundary drawn through. Both are on to begin with, so the
+first thing one sees is Γ tiling the disk over the modular tessellation.
+Colours are `c1`/`c2` for the tessellation and `fill`/`fill2` for the
+translates, banana and chocolate to begin with; `view=uhp` goes back to the
+half-plane, `tile=0` and `bg=0` turn the two tilings off. The cusps sit on the
 circle, so nothing is truncated.
 
 Everything is in the URL. There is no JavaScript: every control is a link
