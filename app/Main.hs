@@ -16,6 +16,7 @@ import Modular.Domain
 import Modular.Generators
 import Modular.Group
 import Render.Page
+import Data.ByteString.Builder (hPutBuilder)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure)
 import System.IO
@@ -76,13 +77,28 @@ main = do
           _ -> return ()
         either (hPutStrLn stderr) printInfo (enumerate sg)
     ["csg-export"]   -> allRecords dir >>= putStr . exportJson
-    ["svg", q]       -> withParams dir q (putStr . renderSvgOnly)
-    ["page", q]      -> withParams dir q (putStr . renderPage)
-    -- the pages shown before the module has loaded: the default page (Γ), the empty tables and generators pages, the examples
-    ["prequeries"]   -> mapM_ putStrLn ("" : "app=2" : "app=3" : [ toQuery defaultParams { pApp = 3, pGens = g } | (_, g) <- examples ])
+    ["svg", q]       -> withParams dir q (hPutBuilder stdout . renderSvgOnly)
+    ["page", q]      -> withParams dir q (hPutBuilder stdout . renderPage)
+    -- the pages shown before the module has loaded, and instead of computing one afterwards
+    ["prequeries"]   -> mapM_ putStrLn prequeries
     _                -> hPutStr stderr usage >> exitFailure
   where
     pad n s = s ++ replicate (max 1 (n - length s)) ' '
+
+-- | The queries whose pages are rendered at build time and shipped: the
+-- default page (Γ itself), the empty tables and generators pages, the worked
+-- examples of mode 3, and the classical families at the levels a first click
+-- reaches — the N buttons walk Γ₀(N) upwards, and the type dropdowns reach
+-- the others.  The disk tilings are a megabyte of path data and better than
+-- a second of arithmetic each, so these are the ones worth keeping.
+prequeries :: [String]
+prequeries =
+  [ "", "app=2", "app=3" ]
+  ++ [ toQuery defaultParams { pApp = 3, pGens = g } | (_, g) <- examples ]
+  ++ [ toQuery (fam t n) | (t, ns) <- families, n <- ns ]
+  where
+    families = [ (G0, [2 .. 12]), (G1, [2 .. 6]), (Gfull, [2 .. 4]), (Gup0, [2 .. 4]), (Gup1, [2 .. 4]) ]
+    fam t n = defaultParams { pG1 = t, pN = n }
 
 withParams :: FilePath -> String -> (Context -> IO ()) -> IO ()
 withParams dir q k = resolve dir (scanAll dir) (parseParams (parseQuery q)) >>= k

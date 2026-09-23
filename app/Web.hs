@@ -9,6 +9,11 @@
 -- request in the compact formats of "Modular.CP".
 module Web (render, svg, identifyKey) where
 
+import qualified Data.ByteString.Unsafe as BU
+import Data.ByteString.Builder (Builder, toLazyByteString)
+import qualified Data.ByteString.Lazy as BL
+import Foreign.Ptr (Ptr, castPtr)
+import Data.Word (Word8)
 import GHC.Wasm.Prim
 import Modular.CP (parseCompact, parseSummaries, parseOptions, parseCandidates, parseNames)
 import Modular.Domain (enumerate)
@@ -38,9 +43,19 @@ identifyKey q = pure . toJSString $ case groupOnly (parseParams (parseQuery (fro
   Right dom -> showKey (keyOf dom)
   Left _    -> ""
 
+-- | The page is megabytes of path data; handing it over as a Haskell
+-- 'String' meant a boxed character for each byte of it, and 'toJSString'
+-- then walking that list.  The builder writes UTF-8 into one buffer and the
+-- browser decodes it in a single call.
+foreign import javascript unsafe "(new TextDecoder('utf-8')).decode(new Uint8Array(__exports.memory.buffer, $1, $2))"
+  jsDecodeUtf8 :: Ptr Word8 -> Int -> IO JSString
+
+fromBuilder :: Builder -> IO JSString
+fromBuilder b = BU.unsafeUseAsCStringLen (BL.toStrict (toLazyByteString b)) $ \(p, n) -> jsDecodeUtf8 (castPtr p) n
+
 render :: JSString -> JSString -> JSString -> IO JSString
-render q r s = pure (toJSString (renderPage (context q r s)))
+render q r s = fromBuilder (renderPage (context q r s))
 
 svg :: JSString -> JSString -> JSString -> IO JSString
-svg q r s = pure (toJSString (renderSvgOnly (context q r s)))
+svg q r s = fromBuilder (renderSvgOnly (context q r s))
 

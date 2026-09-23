@@ -26,6 +26,7 @@ module Render.Page
   ) where
 
 import Data.Array ((!))
+import Data.ByteString.Builder
 import Data.List (intercalate, sortOn)
 import Data.Ratio
 import Flint.Ball
@@ -203,10 +204,10 @@ sceneTri p = case pView p of
     trisD = [ Tri (triangleDisk precD dv g) f o w Nothing (showMat g) | (i, g) <- zip [0 ..] mats, let (f, o, w) = style i ]
     note = "triangle explorer    M = " ++ showMat (last mats)
 
-renderSvgOnly :: Context -> String
+renderSvgOnly :: Context -> Builder
 renderSvgOnly cx = case sceneFor cx of
   Right sc -> renderSvg sc
-  Left err -> "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"60\"><text x=\"10\" y=\"30\">" ++ esc err ++ "</text></svg>"
+  Left err -> stringUtf8 "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"60\"><text x=\"10\" y=\"30\">" <> escB err <> stringUtf8 "</text></svg>"
 
 -- HTML ------------------------------------------------------------------------
 
@@ -319,21 +320,26 @@ units open close ts =
   , let o = if i == 1 then open else ""
         c = if i == length ts then close else "," ]
 
-renderPage :: Context -> String
-renderPage cx = unlines
-  [ "<!doctype html>"
-  , "<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-  , "<title>Fundamental domains</title><style>" ++ css ++ "</style>"
-  , katexHead
-  , "</head><body>"
-  , "<header><h1>Fundamental domains of congruence subgroups of SL₂(ℤ)</h1></header>"
-  , "<div class=\"layout\">"
-  , el "div" [("class", "panel")] (leftPanel cx p)
-  , el "div" [("id", "plot")] (either errorBox renderSvg scene)
-  , el "div" [("class", "panel")] (rightPanel cx p built)
-  , "</div></body></html>"
+-- | The whole page. The panels are a few kilobytes and are built as
+-- 'String's, as they always were; the picture is a 'Builder' (see
+-- "Render.Svg"), and is not copied into one.
+renderPage :: Context -> Builder
+renderPage cx = nl
+  [ utf8 "<!doctype html>"
+  , utf8 "<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+  , utf8 ("<title>Fundamental domains</title><style>" ++ css ++ "</style>")
+  , utf8 katexHead
+  , utf8 "</head><body>"
+  , utf8 "<header><h1>Fundamental domains of congruence subgroups of SL₂(ℤ)</h1></header>"
+  , utf8 "<div class=\"layout\">"
+  , utf8 (el "div" [("class", "panel")] (leftPanel cx p))
+  , utf8 "<div id=\"plot\">" <> either (utf8 . errorBox) renderSvg scene <> utf8 "</div>"
+  , utf8 (el "div" [("class", "panel")] (rightPanel cx p built))
+  , utf8 "</div></body></html>"
   ]
   where
+    utf8 = stringUtf8
+    nl bs = mconcat [ b <> char8 '\n' | b <- bs ]     -- as `unlines` made them
     p0    = cxParams cx
     built = build cx
     scene = sceneFor cx

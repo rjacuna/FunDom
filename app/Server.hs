@@ -52,6 +52,5 @@ app dir loader req respond = case pathInfo req of
     query  = [ (dec k, maybe "" dec v) | (k, v) <- queryString req ]
     params = parseParams query
     dec = T.unpack . TE.decodeUtf8With TE.lenientDecode
-    page ct body = responseLBS status200
-      [("Content-Type", ct), ("Cache-Control", "no-store")]
-      (BL.fromStrict (TE.encodeUtf8 (T.pack body)))
+    page ct body = responseBuilder status200
+      [("Content-Type", ct), ("Cache-Control", "no-store")] body

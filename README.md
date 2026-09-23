@@ -297,9 +297,22 @@ round-to-nearest, and that module is never called here); and FLINT's
 quadratic sieve wants a temporary file (`mkstemp` is stubbed to fail, and
 the sieve is never called either).
 
+**Speed.** The disk tilings are a megabyte or two of path data apiece. Two
+things make them bearable in the browser. The page is built as a
+`ByteString` builder rather than a `String` (a list of boxed characters, one
+per byte, which then had to be walked again to hand it to JavaScript): that
+halved the time, from 2.5 s to 1.2 s for Γ₀(11), and the browser itself takes
+55 ms to parse and insert the result, so what is left is the geometry. And
+the pages of the classical families at the levels a first click reaches are
+rendered at build time and shipped (`fundom prequeries` lists them: Γ₀(N) to
+level 12, Γ₁(N) to 6, Γ(N), Γ⁰(N), Γ¹(N) to 4, beside the default page, the
+empty tables and generators pages and the worked examples). Those appear in
+about 40 ms. Together: 32 pages of `web/pre/`, 61 MB, which is 6.5 MB packed
+in git and about 220 kB gzipped for the one page a visitor opens.
+
 `index.html` is the default page — the full modular group — pre-rendered
 by the native binary, picture included, so it is on screen before the
-module has downloaded; `web/pre/` holds a few more pages rendered the same
+module has downloaded; `web/pre/` holds the other pre-rendered pages, the same
 way (`fundom prequeries` lists them: the empty tables and generators pages
 and the worked examples), and the script shows those at once too. The
 module is compiled in the background meanwhile, streamed as it downloads;
