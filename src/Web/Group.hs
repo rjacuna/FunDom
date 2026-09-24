@@ -29,14 +29,12 @@ contextFrom :: Params -> Either String Record -> ([Summary], Options) -> [Record
 contextFrom p0 rec (matching, opts) cands names = case pApp p0 of
   3 -> Context p0 (parseGenerators (pGens p0) >>= groupFromGenerators) Nothing opts [] cands names
   2 ->
-    let -- a group named directly fixes the filters
-        p = case (pGenus p0, pLevel p0, pIndex p0, rec) of
-              (Nothing, Nothing, Nothing, Right r) -> p0 { pGenus = Just (rGenus r), pLevel = Just (rLevel r), pIndex = Just (rIndex r) }
-              _ -> p0
-        grp = case pDb p of
+    -- the genus, level and index filter the list of groups and nothing else: choosing a group from the list
+    -- leaves them as they are
+    let grp = case pDb p0 of
                 Just _  -> toSubgroup <$> rec
                 Nothing -> Left "choose a group"
-    in Context p grp (either (const Nothing) Just rec) opts (sortOn (\s -> (smGenus s, smLevel s, smIndex s, smName s)) matching) [] names
+    in Context p0 grp (either (const Nothing) Just rec) opts (sortOn (\s -> (smGenus s, smLevel s, smIndex s, smName s)) matching) [] names
   _ -> Context p0 (Right (subgroup (pG1 p0) (pN p0) (pG2 p0) (pM p0))) Nothing opts [] cands names
 
 -- | The group of modes 1 and 3 alone, for finding its key.
@@ -55,10 +53,8 @@ resolve dir loader p = case pApp p of
     rec <- case pDb p of
       Just name -> findRecordNamed dir names name
       Nothing   -> return (Left "choose a group")
-    -- a name alone: filter by its own genus, level and index
-    let filters = case (pGenus p, pLevel p, pIndex p, rec) of
-          (Nothing, Nothing, Nothing, Right r) -> (Just (rGenus r), Just (rLevel r), Just (rIndex r))
-          _ -> (pGenus p, pLevel p, pIndex p)
+    -- the filters are the ones chosen; the group chosen does not set them
+    let filters = (pGenus p, pLevel p, pIndex p)
     return (contextFrom p rec (filterAndOptions filters sms) [] (related sms (either (const []) neighbours rec)))
   _ -> do
     -- the table entries this group might be, by genus, level, index and widths

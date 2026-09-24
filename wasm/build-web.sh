@@ -4,7 +4,8 @@
 #
 #   ./wasm/build-flint-wasi.sh   # once: GMP, MPFR, FLINT for wasm32-wasi
 #   ./wasm/build-web.sh          # the module, its JS glue, the tables and the pre-rendered pages
-#   ./wasm/build-web.sh pages    # only the tables and the pages (needs the native binary: cabal build)
+#   ./wasm/build-web.sh pages    # only the tables and the pages (needs the native binary: cabal build exe:fundom)
+#   ./wasm/build-web.sh wasm     # only the module and its JS glue
 #   python3 -m http.server -d web 8092
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -40,20 +41,22 @@ wasm-opt -Os --enable-bulk-memory --enable-reference-types --enable-simd \
 fi
 
 # The tables and the pre-rendered pages, from the native binary.  web/pre/
-# holds the pages listed by `fundom prequeries` (the default page, the
-# empty tables and generators pages, the worked examples), which the app
-# shows at once, before the module has loaded; index.html is the default
-# page itself, with the module script and the list of those pages added.
+# holds the pages listed by `fundom prequeries` (the default page, the empty
+# tables and generators pages, the worked examples, the families in all five
+# views), which the app shows at once instead of computing them; index.html
+# is the default page itself, with the module script and the list of those
+# pages added.  The pages are rendered by $JOBS processes at once, each
+# reading the tables a single time; then wasm/parts.py takes the two large
+# layers out of every page into web/pre/parts/, one file per distinct layer.
+[ "${1:-}" = "wasm" ] && exit 0
 BIN="$(ls "$ROOT"/dist-newstyle/build/*/ghc-*/fundom-*/x/fundom/build/fundom/fundom 2>/dev/null | head -1)"
 if [ -n "$BIN" ]; then
+  JOBS="${FUNDOM_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}"
   [ -d "$ROOT/csg" ] && (cd "$ROOT" && "$BIN" csg-export > "$OUT/csg.json")
-  rm -rf "$OUT/pre"; mkdir -p "$OUT/pre"; : > "$OUT/pre/list.tsv"
-  i=0
-  while IFS= read -r q; do
-    (cd "$ROOT" && "$BIN" page "$q") > "$OUT/pre/$i.html"
-    printf '%s\t%s\n' "pre/$i.html" "$q" >> "$OUT/pre/list.tsv"
-    i=$((i + 1))
-  done < <(cd "$ROOT" && "$BIN" prequeries)
+  rm -rf "$OUT/pre"; mkdir -p "$OUT/pre"
+  (cd "$ROOT" && "$BIN" prequeries) | awk '{ printf "pre/%d.html\t%s\n", NR - 1, $0 }' > "$OUT/pre/list.tsv"
+  seq 0 $((JOBS - 1)) | (cd "$ROOT" && xargs -P "$JOBS" -I{} "$BIN" prerender "$OUT/pre" {} "$JOBS")
   (cd "$ROOT" && "$BIN" page '') | python3 "$HERE/shell.py" "$OUT/index.html" "$OUT/pre/list.tsv"
+  python3 "$HERE/parts.py" "$OUT/pre/parts" "$OUT"/pre/*.html "$OUT/index.html"
 fi
 ls -la "$OUT" "$OUT/pre"

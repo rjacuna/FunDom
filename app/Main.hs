@@ -9,14 +9,18 @@ module Main (main) where
 import Data.Array ((!))
 import Flint.SL2
 import Flint.Z
-import Data.List (intercalate)
+import Control.Monad (forM_)
+import qualified Data.ByteString.Lazy as BL
+import Data.List (intercalate, nub)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>))
 import Modular.CP
 import Modular.Disk (sidePairings)
 import Modular.Domain
 import Modular.Generators
 import Modular.Group
 import Render.Page
-import Data.ByteString.Builder (hPutBuilder)
+import Data.ByteString.Builder (hPutBuilder, toLazyByteString)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure)
 import System.IO
@@ -81,24 +85,40 @@ main = do
     ["page", q]      -> withParams dir q (hPutBuilder stdout . renderPage)
     -- the pages shown before the module has loaded, and instead of computing one afterwards
     ["prequeries"]   -> mapM_ putStrLn prequeries
+    -- render the pre-rendered pages numbered k mod m (all of them for 0 1) into a directory, the tables read once
+    ["prerender", out, k, m] -> prerender dir out (read k) (read m)
     _                -> hPutStr stderr usage >> exitFailure
   where
     pad n s = s ++ replicate (max 1 (n - length s)) ' '
 
 -- | The queries whose pages are rendered at build time and shipped: the
 -- default page (Γ itself), the empty tables and generators pages, the worked
--- examples of mode 3, and the classical families at the levels a first click
--- reaches — the N buttons walk Γ₀(N) upwards, and the type dropdowns reach
--- the others.  The disk tilings are a megabyte of path data and better than
--- a second of arithmetic each, so these are the ones worth keeping.
+-- examples of mode 3, and then the families in each of the five views (the
+-- half-plane, and the disk with and without the tiling by Γ and with and
+-- without the modular tessellation): Γ₀(N) ∩ Γ₀(M) for every 1 ≤ N, M ≤ 23,
+-- and the other types at small levels.  A disk tiling is a megabyte of path
+-- data and a second of arithmetic in the browser; the build splits the two
+-- large layers out of each page into files of their own, shared by every
+-- page that draws the same layer (see wasm/parts.py).
 prequeries :: [String]
-prequeries =
+prequeries = nub $
   [ "", "app=2", "app=3" ]
   ++ [ toQuery defaultParams { pApp = 3, pGens = g } | (_, g) <- examples ]
-  ++ [ toQuery (fam t n) | (t, ns) <- families, n <- ns ]
+  ++ [ toQuery (view (fam G0 n G0 m)) | n <- [1 .. 23], m <- [1 .. 23], view <- views ]
+  ++ [ toQuery (view (fam t n G0 1)) | (t, ns) <- others, n <- ns, view <- views ]
   where
-    families = [ (G0, [2 .. 12]), (G1, [2 .. 6]), (Gfull, [2 .. 4]), (Gup0, [2 .. 4]), (Gup1, [2 .. 4]) ]
-    fam t n = defaultParams { pG1 = t, pN = n }
+    views = [ id, \p -> p { pTile = False }, \p -> p { pBg = False }, \p -> p { pTile = False, pBg = False }, \p -> p { pView = UHP } ]
+    others = [ (G1, [2 .. 6]), (Gfull, [2 .. 4]), (Gup0, [2 .. 4]), (Gup1, [2 .. 4]) ]
+    fam t n t' m = defaultParams { pG1 = t, pN = n, pG2 = t', pM = m }
+
+-- | The pages numbered k mod m of 'prequeries', written to @out/i.html@.
+prerender :: FilePath -> FilePath -> Int -> Int -> IO ()
+prerender dir out k m = do
+  sms <- scanAll dir
+  createDirectoryIfMissing True out
+  forM_ [ (i, q) | (i, q) <- zip [0 :: Int ..] prequeries, i `mod` m == k ] $ \(i, q) -> do
+    cx <- resolve dir (pure sms) (parseParams (parseQuery q))
+    BL.writeFile (out </> (show i ++ ".html")) (toLazyByteString (renderPage cx))
 
 withParams :: FilePath -> String -> (Context -> IO ()) -> IO ()
 withParams dir q k = resolve dir (scanAll dir) (parseParams (parseQuery q)) >>= k

@@ -46,7 +46,7 @@ library
 executable fundom
     hs-source-dirs:   app
     main-is:          Main.hs
-    build-depends:    base, array, bytestring, fundom
+    build-depends:    base, array, bytestring, directory, filepath, fundom
     default-language: Haskell2010
     ghc-options:      -Wall
 

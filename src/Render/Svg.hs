@@ -60,7 +60,8 @@ data Scene = Scene
   , scNote    :: String             -- ^ a line of text in the top-left corner
   , scAxis    :: Bool               -- ^ the real axis with ticks (half-plane)
   , scDisk    :: Maybe (DiskView, String)  -- ^ the unit circle, filled with a colour (disk)
-  , scLayers  :: [Layer]            -- ^ drawn under the triangles, in order
+  , scLayers  :: [(String, [Layer])] -- ^ drawn under the triangles, in order, in named parts
+                                      --   ("tess", "tile"), each between <!--part:NAME--> and <!--/part-->
   }
 
 -- | A half-plane scene with nothing underneath.
@@ -123,7 +124,7 @@ renderSvg sc = nl $
   [ str "<clipPath id=\"disk\"><circle cx=\"" <> fmtB (dvCx dv) <> str "\" cy=\"" <> fmtB (dvCy dv) <> str "\" r=\"" <> fmtB (dvR dv) <> str "\"/></clipPath>"
   | Just (dv, _) <- [scDisk sc] ] ++
   [ str "<g id=\"layers\"" <> (case scDisk sc of { Just _ -> str " clip-path=\"url(#disk)\""; Nothing -> mempty }) <> char8 '>' ] ++
-  concatMap layer (scLayers sc) ++
+  concat [ [ str "<!--part:" <> escB name <> str "-->" ] ++ concatMap layer lys ++ [ str "<!--/part-->" ] | (name, lys) <- scLayers sc, not (null lys) ] ++
   [ str "</g>", str "<g id=\"tris\">" ] ++
   map tri (scTris sc) ++
   [ str "</g>" ] ++

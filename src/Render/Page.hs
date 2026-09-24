@@ -27,7 +27,7 @@ module Render.Page
 
 import Data.Array ((!))
 import Data.ByteString.Builder
-import Data.List (intercalate, sortOn)
+import Data.List (intercalate, sortOn, stripPrefix)
 import Data.Ratio
 import Flint.Ball
 import Flint.SL2
@@ -164,7 +164,8 @@ sceneDomainDisk p0 (Built dom inf) =
                     (if j == i then "paired with itself" else "draw #" ++ show j ++ " (and what hangs off it) across the " ++ sideName g ++ " of #" ++ show i)
               | i <- [0 .. n - 1], g <- gens, let e = edge dom i g, not (eGlued e), let j = eNbr e ]
           | otherwise = []
-    layers = tessellation ++ tiling
+    -- two parts, marked in the SVG: the build serves each as a file of its own, shared by every page that has it
+    layers = [("tess", tessellation), ("tile", tiling)]
     tessellation
       | pBg p = [ Layer (colourCss (pC2 p) 0) (colourCss (pC2 p) 0) 0.4 1 True (modularTiles prec dv 1.5 6000) ]
       | otherwise = []
@@ -189,7 +190,7 @@ sceneTri :: Params -> Scene
 sceneTri p = case pView p of
   UHP  -> uhpScene v tris [] [] [] note
   Disk -> Scene v trisD 0.6 [] [] [] note False (Just (dv, if pBg p then colourCss (pC1 p) 0 else "#ffffff"))
-                [ Layer (colourCss (pC2 p) 0) (colourCss (pC2 p) 0) 0.4 1 True (modularTiles precD dv 1.5 6000) | pBg p ]
+                [ ("tess", [ Layer (colourCss (pC2 p) 0) (colourCss (pC2 p) 0) 0.4 1 True (modularTiles precD dv 1.5 6000) | pBg p ]) ]
   where
     v    = viewOf p (pMats p)
     prec = precFor v
@@ -235,6 +236,17 @@ hidden k v = "<input type=\"hidden\" name=\"" ++ k ++ "\" value=\"" ++ esc v ++ 
 select :: String -> [(String, String)] -> String -> String
 select name opts cur = el "select" [("name", name)] $ concat
   [ "<option value=\"" ++ esc v ++ "\"" ++ (if v == cur then " selected" else "") ++ ">" ++ esc label ++ "</option>" | (v, label) <- opts ]
+
+-- | A select that redraws the moment it changes: the forms of the families have no button.
+live :: String -> String
+live s = case stripPrefix "<select" s of
+  Just rest -> "<select onchange=\"this.form.requestSubmit()\"" ++ rest
+  Nothing   -> s
+
+-- | The attributes of a typed field that redraws when its value is committed: on change (leaving the field, a
+-- spinner step), and on Enter, which a form with two fields and no button would otherwise ignore.
+onCommit :: String
+onCommit = " onchange=\"this.form.requestSubmit()\" onkeydown=\"if(event.key==='Enter'){event.preventDefault();this.form.requestSubmit()}\""
 
 css :: String
 css = unlines
@@ -382,12 +394,11 @@ familyControls p = concat
           [ el "label" [("class", "pill")] (el "small" [] "type" ++ dropdown "g1" [ (typeCode t, typeLabel t "N") | t <- allTypes ] (Just (typeCode (pG1 p))) "")
           , el "span" [("class", "pill cap")] "∩"
           , el "label" [("class", "pill")] (el "small" [] "type" ++ dropdown "g2" [ (typeCode t, typeLabel t "M") | t <- allTypes ] (Just (typeCode (pG2 p))) "")
-          , el "label" [("class", "pill")] (el "small" [] "N" ++ "<input type=\"number\" name=\"n\" min=\"1\" value=\"" ++ show (pN p) ++ "\" onchange=\"this.form.requestSubmit()\">")
+          , el "label" [("class", "pill")] (el "small" [] "N" ++ "<input type=\"number\" name=\"n\" min=\"1\" value=\"" ++ show (pN p) ++ "\"" ++ onCommit ++ ">")
           , el "span" [("class", "pill cap")] ""
-          , el "label" [("class", "pill")] (el "small" [] "M" ++ "<input type=\"number\" name=\"m\" min=\"1\" value=\"" ++ show (pM p) ++ "\" onchange=\"this.form.requestSubmit()\">")
+          , el "label" [("class", "pill")] (el "small" [] "M" ++ "<input type=\"number\" name=\"m\" min=\"1\" value=\"" ++ show (pM p) ++ "\"" ++ onCommit ++ ">")
           ]
       , concat [ hidden k v | (k, v) <- carried p ]
-      , "<button type=\"submit\">Draw</button>"
       ]
   , el "p" [] $ "N " ++ btn (href (fresh p) { pN = max 1 (pN p - 1) }) "−" ++ btn (href (fresh p) { pN = pN p + 1 }) "+"
              ++ "  M " ++ btn (href (fresh p) { pM = max 1 (pM p - 1) }) "−" ++ btn (href (fresh p) { pM = pM p + 1 }) "+"
@@ -410,7 +421,7 @@ browseControls cx p = concat
           , cell "lev" "level" (pLevel p) (oLevels opts)
           , cell "idx" "index" (pIndex p) (oIndices opts)
           , el "label" [("class", "pill")] (el "small" [] "group"
-              ++ dropdown "db" [ (smName sm, describe sm) | sm <- cxClass cx ] (pDb p) (if null (cxClass cx) then "no match" else "group…")) ])
+              ++ dropdown "db" (outside ++ [ (smName sm, describe sm) | sm <- cxClass cx ]) (pDb p) (if null (cxClass cx) then "no match" else "group…")) ])
       , concat [ hidden k v | (k, v) <- carried p ]
       , "<noscript><button type=\"submit\">Show</button></noscript>"
       ]
@@ -432,16 +443,23 @@ browseControls cx p = concat
     cell key label chosen values = el "label" [("class", "pill")] (el "small" [] label ++ dropdownAny key [ (show x, show x) | x <- values ] (maybe "" show chosen))
     describe sm = displayName (smName sm) (smSpecial sm)
                   ++ " · index " ++ show (smIndex sm) ++ ", genus " ++ show (smGenus sm) ++ ", level " ++ show (smLevel sm)
+    -- the group on screen stays in the list when the filters leave it out, so the list names what is drawn and a
+    -- filter changed back does not lose it
+    outside = [ (rName r, displayName (rName r) (rSpecial r) ++ " · outside these filters")
+              | Just r <- [cxRecord cx], rName r `notElem` map smName (cxClass cx) ]
 
 -- | A select that submits its form on change, with a placeholder when
 -- nothing is chosen yet.
 dropdown :: String -> [(String, String)] -> Maybe String -> String -> String
-dropdown name opts cur placeholder =
+dropdown name opts cur0 placeholder =
   el "select" [("name", name), ("onchange", "this.form.requestSubmit()")] $
     (case cur of
        Just _  -> ""
        Nothing -> "<option value=\"\" selected disabled>" ++ esc placeholder ++ "</option>")
     ++ concat [ "<option value=\"" ++ esc v ++ "\"" ++ (if Just v == cur then " selected" else "") ++ ">" ++ esc label ++ "</option>" | (v, label) <- opts ]
+  where
+    -- a value that is not among the options (a group the filters have since left out) is not shown as chosen
+    cur = if maybe False (`elem` map fst opts) cur0 then cur0 else Nothing
 
 -- | The same, for a chosen category: "any" drops the filter.
 dropdownAny :: String -> [(String, String)] -> String -> String
@@ -480,19 +498,17 @@ viewControls cx p = concat
                [ btn (href p { pScale = pScale p * 2 }) "zoom in", btn (href p { pScale = pScale p / 2 }) "zoom out"
                , btn (href p { pScale = 50, pCx = 0 }) "reset", fitBtn ])
              ++ el "form" [("method", "get"), ("action", "")] (concat
-                  [ el "label" [] ("scale <input class=\"rat\" name=\"scale\" value=\"" ++ esc (showRat (pScale p)) ++ "\"> px per unit")
-                  , el "label" [] ("centre <input class=\"rat\" name=\"cx\" value=\"" ++ esc (showRat (pCx p)) ++ "\">")
-                  , el "label" [] ("domain " ++ select "fill" [ (c', c') | c' <- colourNames ] (pFill p) ++ " / " ++ select "outline" [ (c', c') | c' <- colourNames ] (pOutline p))
-                  , carry ["scale", "cx", "fill", "outline"]
-                  , "<button type=\"submit\">Draw</button>" ])
+                  [ el "label" [] ("scale <input class=\"rat\" name=\"scale\" value=\"" ++ esc (showRat (pScale p)) ++ "\"" ++ onCommit ++ "> px per unit")
+                  , el "label" [] ("centre <input class=\"rat\" name=\"cx\" value=\"" ++ esc (showRat (pCx p)) ++ "\"" ++ onCommit ++ ">")
+                  , el "label" [] ("domain " ++ live (select "fill" [ (c', c') | c' <- colourNames ] (pFill p)) ++ " / " ++ live (select "outline" [ (c', c') | c' <- colourNames ] (pOutline p)))
+                  , carry ["scale", "cx", "fill", "outline"] ])
       Disk -> el "p" [] (toggle (pBg p) (href p { pBg = not (pBg p) }) "modular tessellation"
                          ++ toggle (pTile p) (href p { pTile = not (pTile p) }) "tile by Γ")
               ++ el "form" [("method", "get"), ("action", "")] (concat
-                   [ el "label" [] ("tessellation " ++ select "c1" [ (c', c') | c' <- colourNames ] (pC1 p) ++ " / " ++ select "c2" [ (c', c') | c' <- colourNames ] (pC2 p))
-                   , el "label" [] ("translates " ++ select "fill" [ (c', c') | c' <- colourNames ] (pFill p) ++ " / " ++ select "fill2" [ (c', c') | c' <- colourNames ] (pFill2 p))
-                   , el "label" [] ("outline " ++ select "outline" [ (c', c') | c' <- colourNames ] (pOutline p))
-                   , carry ["c1", "c2", "fill", "fill2", "outline"]
-                   , "<button type=\"submit\">Change Colors</button>" ])
+                   [ el "label" [] ("tessellation " ++ live (select "c1" [ (c', c') | c' <- colourNames ] (pC1 p)) ++ " / " ++ live (select "c2" [ (c', c') | c' <- colourNames ] (pC2 p)))
+                   , el "label" [] ("translates " ++ live (select "fill" [ (c', c') | c' <- colourNames ] (pFill p)) ++ " / " ++ live (select "fill2" [ (c', c') | c' <- colourNames ] (pFill2 p)))
+                   , el "label" [] ("outline " ++ live (select "outline" [ (c', c') | c' <- colourNames ] (pOutline p)))
+                   , carry ["c1", "c2", "fill", "fill2", "outline"] ])
   ]
   where
     -- a GET form resets what it does not carry, so every field it does not own is hidden in it

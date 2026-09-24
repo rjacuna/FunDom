@@ -62,11 +62,15 @@ the upper half-plane.
 Three modes, on a slider at the top of the left panel; the half-plane/disk
 toggle and everything under "Show" apply to all three.
 
-1. **Families.** Pick Γ_x(N) ∩ Γ_y(M) from Γ₀, Γ₁, Γ⁰, Γ¹, Γ.
-2. **Tables.** Browse Cummins–Pauli by genus, then level, then index; the
-   groups in that class are listed on the right (`11B1`, `11C1`, …), and
-   choosing one draws it and checks the computed invariants against the
-   record. Or type a name.
+1. **Families.** Pick Γ_x(N) ∩ Γ_y(M) from Γ₀, Γ₁, Γ⁰, Γ¹, Γ. There is
+   no button: every control redraws as soon as it changes (a typed number
+   when it is committed, by leaving the field or with Enter).
+2. **Tables.** Browse Cummins–Pauli by genus, level and index, in any order;
+   each is a filter, "any" by default, and together they narrow the list of
+   groups (`11B1`, `11C1`, …) in the last dropdown. Choosing a group draws it
+   and checks the computed invariants against the record; it does not touch
+   the filters, which only ever filter the list (a drawn group they leave
+   out stays in it, marked "outside these filters"). Or type a name.
 3. **Generators.** Type integer matrices, one per line. The subgroup they
    generate is enumerated — if its index is finite — Hsu's criterion says
    whether it is a congruence subgroup, and the domain is drawn either way,
@@ -303,20 +307,41 @@ things make them bearable in the browser. The page is built as a
 per byte, which then had to be walked again to hand it to JavaScript): that
 halved the time, from 2.5 s to 1.2 s for Γ₀(11), and the browser itself takes
 55 ms to parse and insert the result, so what is left is the geometry. And
-the pages of the classical families at the levels a first click reaches are
-rendered at build time and shipped (`fundom prequeries` lists them: Γ₀(N) to
-level 12, Γ₁(N) to 6, Γ(N), Γ⁰(N), Γ¹(N) to 4, beside the default page, the
-empty tables and generators pages and the worked examples). Those appear in
-about 40 ms. Together: 32 pages of `web/pre/`, 61 MB, which is 6.5 MB packed
-in git and about 220 kB gzipped for the one page a visitor opens.
+the families are rendered at build time and shipped: Γ₀(N) ∩ Γ₀(M) for every
+1 ≤ N, M ≤ 23, and Γ₁(N) to level 6, Γ(N), Γ⁰(N), Γ¹(N) to 4, each in all
+five views — the half-plane, and the disk with and without the tiling by Γ
+and with and without the modular tessellation — beside the default page, the
+empty tables and generators pages and the worked examples. That is 2,721
+pages (`fundom prequeries` lists them; `fundom prerender DIR K M` renders
+every M-th of them from the K-th, and the build runs one such process per
+core, each reading the tables once: five and a half minutes on 18 cores).
+
+Rendered whole they would come to 1.77 GB, over what GitHub Pages will
+serve. But most of each disk page is its two large layers, and those repeat:
+the modular tessellation is the same on every page, and the tiling by Γ is
+the same on every page that draws the same group in the same colours — both
+orders of Γ₀(N) ∩ Γ₀(M), every pair with the same least common multiple,
+every view that tiles. The SVG marks the two layers (`<!--part:tess-->`,
+`<!--part:tile-->`), and `wasm/parts.py` writes each one once to
+`web/pre/parts/`, named by a hash of its content, and leaves an empty
+`<g data-part>` in the page, which `web/app.js` fills from that file. There
+are 156 distinct parts, 123 MB; the pages themselves, panels and domain, come
+to 211 MB, 78 kB on average. Every file is served on its own and fetched
+only when needed: a visitor opening a page downloads that page, about 12 kB
+compressed, and its parts, the tessellation once for the whole visit and a
+tiling once per group. The shipped pages appear in about 40 ms; any other
+page is computed, in a second or so for a disk tiling.
+
+The page lookup ignores what does not change the page: parameters at their
+defaults (a form sends every field it holds, the module's own links leave
+the defaults out), and in the disk the half-plane's scale and centre, which
+the view buttons carry along for the way back.
 
 `index.html` is the default page — the full modular group — pre-rendered
-by the native binary, picture included, so it is on screen before the
-module has downloaded; `web/pre/` holds the other pre-rendered pages, the same
-way (`fundom prequeries` lists them: the empty tables and generators pages
-and the worked examples), and the script shows those at once too. The
-module is compiled in the background meanwhile, streamed as it downloads;
-any other page waits for it, with a spinner over the plot while it works.
+by the native binary, so it is on screen before the module has downloaded;
+its parts are the same files as everyone else's. The module is compiled in
+the background meanwhile, streamed as it downloads; a page that was not
+shipped waits for it, with a spinner over the plot while it works.
 
 `app/Web.hs` exports `render`, `svg` and `identifyKey`, the first two taking the query
 string and — for the tables — one record and the summaries of one genus
