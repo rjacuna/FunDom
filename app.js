@@ -73,14 +73,14 @@ async function inputs(query) {
   const data = await tables();
   const name = (p.get("db") || "").toUpperCase();
   const num = k => (p.get(k) || "") === "" ? null : +p.get(k);
-  let f = { g: num("gen"), l: num("lev"), i: num("idx") };
+  // the genus, level and index filter the list of groups; the group chosen from it does not set them
+  const f = { g: num("gen"), l: num("lev"), i: num("idx") };
   let record = "", names = [];
   if (name) {
     const r = data.find(x => x.n === name);
     if (r) {
       record = compactRecord(r);
       names = classical(data, [r]);
-      if (f.g === null && f.l === null && f.i === null) f = { g: r.g, l: r.l, i: r.i };
     }
   }
   const fits = (x, ff) => (ff.g === null || x.g === ff.g) && (ff.l === null || x.l === ff.l) && (ff.i === null || x.i === ff.i);
@@ -135,19 +135,43 @@ const pre = new Map(), preHtml = new Map();
 // submits every field it holds, so `?g1=G0&g2=G0&n=5&m=1` and `?n=5` are the
 // same page.  These four defaults (Web.Params.defaultParams) are dropped so
 // that both find the page; they are the group's own, and structural.
-const preDefaults = { g1: "G0", g2: "G0", n: "1", m: "1", app: "1" };
+// The same goes for the view's own defaults.  And in the disk the scale and the centre of the half-plane mean nothing
+// to the picture: a page reached by the view buttons carries the half-plane's zoom along for the way back, and
+// should still find the page drawn without it.
+const preDefaults = { g1: "G0", g2: "G0", n: "1", m: "1", app: "1", view: "disk", tile: "1", bg: "1" };
 function preKey(query) {                                        // an empty value is the default, as for the module
   const p = new URLSearchParams(query.replace(/^\?/, ""));
-  const kept = [...p.entries()].filter(([k, v]) => v !== "" && v !== preDefaults[k]);
+  const disk = p.get("view") !== "uhp";
+  const kept = [...p.entries()].filter(([k, v]) => v !== "" && v !== preDefaults[k] && !(disk && (k === "scale" || k === "cx")));
   return new URLSearchParams(kept.sort()).toString();
+}
+
+// The large layers of a pre-rendered disk page -- the modular tessellation, the tiling by Γ -- are files of their
+// own under pre/parts/, named by their content and shared by every page that draws them (wasm/parts.py); the page
+// holds an empty <g data-part> for each, filled here.  Each part is fetched once.
+const partText = new Map();
+function part(h) {
+  if (!partText.has(h)) partText.set(h, fetch("./pre/parts/" + h + ".svg").then(r => {
+    if (!r.ok) throw new Error("part " + h + ": " + r.status);
+    return r.text();
+  }));
+  return partText.get(h);
+}
+function fillParts(root) {
+  return Promise.all([...root.querySelectorAll("g[data-part]")].map(async g => {
+    const h = g.getAttribute("data-part");
+    g.innerHTML = await part(h);                                  // parsed as SVG: the placeholder is an SVG element
+    g.removeAttribute("data-part");
+  }));
 }
 for (const [q, file] of (window.fundomPre || [])) pre.set(preKey(q), file);
 
 async function render(query) {
   const file = pre.get(preKey(query));
   if (file !== undefined) {
-    if (!preHtml.has(file)) preHtml.set(file, await (await fetch("./" + file)).text());
-    show(preHtml.get(file));
+    if (!preHtml.has(file)) preHtml.set(file, fetch("./" + file).then(r => r.text()));
+    show(await preHtml.get(file));
+    await fillParts(document.body);
     return;
   }
   spinner();
@@ -196,4 +220,5 @@ window.addEventListener("popstate", () => render(location.search).catch(fail));
 // module and the tables load in the background meanwhile, for the first
 // page that needs them.
 if (preKey(location.search) !== preKey("")) render(location.search).catch(fail);
+else fillParts(document.body).catch(fail);
 load().then(tables).catch(() => {});
