@@ -3,7 +3,8 @@
 A port of **Helena A. Verrill's Fundamental Domain Drawer** — the Java
 applet in `../` (`FunDomain.java`), implementing her *Algorithm for Drawing
 Fundamental Domains* (January 2001) — to Haskell, with the numerics in FLINT
-3.4, a server-side HTML UI, and the same library compiled to WebAssembly for
+3.6 through the shared `../flintell` package, a server-side HTML UI, and the
+same library compiled to WebAssembly for
 <https://rjacuna.github.io/FunDom/>. Same architecture as CriticalValues: a
 pure library with the mathematics, a thin native server, and a `wasm32-wasi`
 reactor export — here with FLINT linked into the module.
@@ -41,9 +42,13 @@ tables; T. Hsu, *Identifying congruence subgroups of the modular group*,
 Proc. AMS 124 (1996); the transcription of Hsu's relations follows Sage's
 `is_congruence` (C. Kurth's KFarey).
 
+Clone [flintell](https://github.com/rjacuna/flintell) beside FunDom before
+building: `git clone https://github.com/rjacuna/flintell.git ../flintell`.
+
 ```sh
-brew install flint                        # FLINT 3.4 (GMP, MPFR); the tables go in csg/
-export PATH="$HOME/.ghcup/bin:$PATH" CC=/usr/bin/clang PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig
+export PATH="$HOME/.ghcup/bin:$PATH" CC=/usr/bin/clang
+../flintell/scripts/build-deps.sh native
+../flintell/scripts/configure-cabal.sh .
 cabal build all && cabal test
 cabal run fundom -- info G0 11            # index 12, genus 1, cusps ∞·1 0·11
 cabal run fundom -- db 11A1               # a Cummins–Pauli group, checked against their table
@@ -135,7 +140,7 @@ centre and radius; only the two vertices are approximate, and those are balls
 at whatever precision the zoom needs.
 
 The binding is `Flint.FFI`, about a hundred lines: opaque pointers, every
-object allocated and freed by the C shims in `cbits/fundom_shims.c`, and
+object allocated and freed by the C shims in `../flintell/cbits/flintell_shims.c`, and
 plain `ccall`s to documented FLINT functions. No struct is ever read from
 Haskell — sizes come from `sizeof` in C and fields from FLINT's accessors —
 so it is right for FLINT 3 (whose `fmpz_mat_struct` swapped `rows` for
@@ -222,11 +227,11 @@ does not reproduce them:
 ## Layout
 
 ```
-src/Flint/FFI.hs        the FLINT binding: opaque pointers and ccalls over cbits/
-src/Flint/Z.hs          Integer/Rational ⇄ fmpz/fmpq marshalling
-src/Flint/SL2.hs        PSL₂(ℤ) on psl2z_t; the Möbius action on P¹(ℚ)
-src/Flint/Ball.hs       acb_modular_transform, and the only place a double is made
-src/Flint/Mat.hs        fmpz_mat / fmpq_mat, typed for FLINT 3
+../flintell/src/Flint/FFI.hs        the FLINT binding: opaque pointers and ccalls over cbits/
+../flintell/src/Flint/Z.hs          Integer/Rational ⇄ fmpz/fmpq marshalling
+../flintell/src/Flint/SL2.hs        PSL₂(ℤ) on psl2z_t; the Möbius action on P¹(ℚ)
+../flintell/src/Flint/Ball.hs       acb_modular_transform, and the only place a double is made
+../flintell/src/Flint/Mat.hs        fmpz_mat / fmpq_mat, typed for FLINT 3
 src/Modular/Group.hs    the five group types and canonical coset keys
 src/Modular/Domain.hs   the enumeration, the gluing table, cusps, genus, edits
 src/Modular/Geometry.hs triangles as exact arcs
@@ -244,8 +249,8 @@ src/Web/Group.hs        URL → context; the only IO before the picture (table l
 app/Main.hs             fundom: info | table | db | level | gens | svg | page
 app/Server.hs           fundom-server: warp, no state
 test/Spec.hs
-cbits/fundom_shims.c    allocation, psl2z normal form and entries, matrix entry access; the wasi stubs
-wasm/                   build-flint-wasi.sh, build-web.sh, wasi-compat.h
+../flintell/cbits/      shared allocation, psl2z and matrix access shims
+wasm/                   build-flint-wasi.sh (delegates to flintell), build-web.sh
 web/                    app.js, wasi-shim.js; index.html, the module and the tables are built
 java/                   Helena A. Verrill's FunDomain, as she published it (GPL-2.0-or-later)
 ```
@@ -288,18 +293,15 @@ memory. That is why the binding is `Flint.FFI`: opaque pointers, allocation
 in C, no `hsc2hs`, so the identical source cross-compiles.
 
 ```sh
-./wasm/build-flint-wasi.sh    # once: GMP 6.3.0, MPFR 4.2.2, FLINT 3.4.0 for wasm32-wasi, in ~/.cache/fundom-wasm
+./wasm/build-flint-wasi.sh    # once: GMP 6.3.0, MPFR 4.2.2, FLINT 3.6.0 for wasm32-wasi, in ~/.cache/flintell/3.6.0/wasi
 ./wasm/build-web.sh           # web/fundom.wasm (3 MB after wasm-opt), web/fundom.js, web/csg.json
 python3 -m http.server -d web 8092
 ```
 
-`build-flint-wasi.sh` needs three accommodations for WASI, all recorded in
-the script: wasi-libc's emulated signals, clocks and `getpid` (GMP raises
-SIGFPE on division by zero); FLINT's LLL certification switches floating
-rounding modes that wasm does not have (the constants are defined to
-round-to-nearest, and that module is never called here); and FLINT's
-quadratic sieve wants a temporary file (`mkstemp` is stubbed to fail, and
-the sieve is never called either).
+`build-flint-wasi.sh` delegates to `../flintell/scripts/build-deps.sh wasi`.
+The shared package disables unavailable profiling, selects FLINT's MPFR/exact
+fallback for LLL certification, and fails explicitly if QSieve needs temporary
+files. See flintell's README for the WebAssembly limitations.
 
 **Speed.** The disk tilings are a megabyte or two of path data apiece. Two
 things make them bearable in the browser. The page is built as a

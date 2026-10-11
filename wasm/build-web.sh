@@ -12,23 +12,25 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
 OUT="$ROOT/web"
 BUILD="${FUNDOM_WASM_BUILD:-$HOME/.cache/fundom-wasm}"
-PREFIX="$BUILD/local"
+FLINTELL="${FLINTELL_ROOT:-$ROOT/../flintell}"
+PREFIX="$("$FLINTELL/scripts/prefix.sh" wasi)"
 HS="$BUILD/hs"
 mkdir -p "$HS" "$OUT"
 
 if [ "${1:-}" != "pages" ]; then
 . ~/.ghc-wasm/env
+unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH SDKROOT CPPFLAGS
 
 # the C shims, with the same compiler GHC links with
-wasm32-wasi-clang -O2 -I"$PREFIX/include" -I"$ROOT/cbits" -D_WASI_EMULATED_SIGNAL \
-  -c "$ROOT/cbits/fundom_shims.c" -o "$HS/fundom_shims.o"
+wasm32-wasi-clang -O2 -I"$PREFIX/include" -I"$FLINTELL/cbits" -D_WASI_EMULATED_SIGNAL \
+  -c "$FLINTELL/cbits/flintell_shims.c" -o "$HS/flintell_shims.o"
 
 # the Haskell, as a reactor: no main, exports via the JSFFI
 wasm32-wasi-ghc -O2 -no-hs-main -optl-mexec-model=reactor \
-  -i"$ROOT/src" -i"$ROOT/app" -outputdir "$HS" \
+  -i"$ROOT/src" -i"$FLINTELL/src" -i"$ROOT/app" -outputdir "$HS" \
   -optl-L"$PREFIX/lib" -optl-lflint -optl-lmpfr -optl-lgmp \
   -optl-lwasi-emulated-signal -optl-lwasi-emulated-process-clocks -optl-lwasi-emulated-getpid \
-  "$ROOT/app/Web.hs" "$HS/fundom_shims.o" -o "$OUT/fundom.wasm"
+  "$ROOT/app/Web.hs" "$HS/flintell_shims.o" -o "$OUT/fundom.wasm"
 
 # the JS side of the JSFFI (from the unoptimised module: post-link reads the
 # JSFFI import/export tables, which wasm-opt then keeps)

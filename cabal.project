@@ -1,7 +1,2 @@
-packages: .
-
-package fundom
-  extra-include-dirs: /opt/homebrew/include
-  extra-lib-dirs:     /opt/homebrew/lib
-
+packages: . ../flintell
 allow-newer: all

@@ -6,21 +6,15 @@ license:            GPL-3.0-or-later
 license-file:       LICENSE
 copyright:          2026 RJ Acuña; mode 1 derives from FunDomain, (C) 2001 Helena A. Verrill, GPL-2.0-or-later
 build-type:         Simple
-extra-source-files: cbits/*.h
 
 -- The mathematics. Every number that matters is a FLINT object: elements of
 -- PSL2(Z) are psl2z_t, cusps and arc centres are fmpq_t, vertices are acb_t
 -- balls, and the view transform runs in arb at a precision chosen from the
 -- zoom. The binding is Flint.FFI: opaque pointers and plain ccalls over the
--- C shims in cbits/, so the same source builds natively and for wasm32-wasi.
+-- C shims in the flintell package, so the same source builds natively and for wasm32-wasi.
 library
     hs-source-dirs:   src
-    exposed-modules:  Flint.FFI
-                      Flint.Z
-                      Flint.SL2
-                      Flint.Ball
-                      Flint.Mat
-                      Modular.Group
+    exposed-modules:  Modular.Group
                       Modular.CP
                       Modular.Word
                       Modular.Coset
@@ -35,10 +29,7 @@ library
                       Web.Params
                       Web.Context
                       Web.Group
-    build-depends:    base >=4 && <5, containers, array, bytestring, directory, filepath
-    c-sources:        cbits/fundom_shims.c
-    include-dirs:     cbits
-    extra-libraries:  flint, gmp
+    build-depends:    base >=4 && <5, containers, array, bytestring, directory, filepath, flintell
     default-language: Haskell2010
     ghc-options:      -Wall -Wno-name-shadowing -Wno-unused-do-bind
 
@@ -46,7 +37,7 @@ library
 executable fundom
     hs-source-dirs:   app
     main-is:          Main.hs
-    build-depends:    base, array, bytestring, directory, filepath, fundom
+    build-depends:    base, array, bytestring, directory, filepath, fundom, flintell
     default-language: Haskell2010
     ghc-options:      -Wall
 
@@ -63,5 +54,5 @@ test-suite spec
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          Spec.hs
-    build-depends:    base, array, bytestring, containers, directory, fundom
+    build-depends:    base, array, bytestring, containers, directory, fundom, flintell
     default-language: Haskell2010

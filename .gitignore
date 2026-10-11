@@ -9,3 +9,6 @@ web/fundom.wasm
 web/fundom.js
 web/csg.json
 web/pre/
+
+# Machine-specific shared FLINT prefix
+cabal.project.local
