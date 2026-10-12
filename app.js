@@ -127,67 +127,180 @@ function show(html) {
   document.title = doc.title || "Fundamental domains";
   let style = document.getElementById("fundom-style");
   if (!style) { style = document.createElement("style"); style.id = "fundom-style"; document.head.appendChild(style); }
-  style.textContent = Array.from(doc.querySelectorAll("style")).map(s => s.textContent).join("\n");
+  const styles = Array.from(doc.querySelectorAll("style")).map(s => s.textContent).join("\n");
+  if (styles) style.textContent = styles;
   document.body.innerHTML = doc.body.innerHTML;
   if (window.fundomMath) window.fundomMath(document.body);   // KaTeX, once it has loaded
   window.scrollTo(0, 0);
 }
 
-// Pages rendered at build time (window.fundomPre, put in the shell by
-// wasm/shell.py): the default page, the empty tables and generators pages,
-// and the worked examples.  They are shown at once, module or no module.
+// Shipped plots are final AVIF pictures, with compact gzip page data. SVG
+// is computed only when an interaction needs it (explorer, editing, custom views).
 const pre = new Map(), preHtml = new Map();
-// The module's own links leave out whatever is at its default, but a GET form
-// submits every field it holds, so `?g1=G0&g2=G0&n=5&m=1` and `?n=5` are the
-// same page.  These four defaults (Web.Params.defaultParams) are dropped so
-// that both find the page; they are the group's own, and structural.
-// The same goes for the view's own defaults.  And in the disk the scale and the centre of the half-plane mean nothing
-// to the picture: a page reached by the view buttons carries the half-plane's zoom along for the way back, and
-// should still find the page drawn without it.
-const preDefaults = { g1: "G0", g2: "G0", n: "1", m: "1", app: "1", view: "disk", tile: "1", bg: "1" };
-function preKey(query) {                                        // an empty value is the default, as for the module
+const preDefaults = { g1:"G0", g2:"G0", n:"1", m:"1", app:"1", view:"disk", tile:"1", bg:"1",
+  fill:"banana", outline:"black", fill2:"chocolate", c1:"white", c2:"grey", w:"900", h:"520",
+  mode:"domain", edit:"0", links:"0", cusps:"1" };
+function preKey(query) {
   const p = new URLSearchParams(query.replace(/^\?/, ""));
+  const app=p.get("app") || (p.get("gens") ? "3" : ["db","gen","lev","idx"].some(k=>p.get(k)) ? "2" : "1");
+  p.set("app",app);
+  if(app!=="1") for(const k of ["g1","g2","n","m"]) p.delete(k);
+  if(app!=="3") p.delete("gens");
+  if(app!=="2") for(const k of ["db","gen","lev","idx"]) p.delete(k);
+  if (p.get("db")) p.set("db",p.get("db").toUpperCase());
   const disk = p.get("view") !== "uhp";
-  const kept = [...p.entries()].filter(([k, v]) => v !== "" && v !== preDefaults[k] && !(disk && (k === "scale" || k === "cx")));
-  return new URLSearchParams(kept.sort()).toString();
+  return new URLSearchParams([...p.entries()].filter(([k,v])=>v!=="" && v!==preDefaults[k] &&
+    !(disk && (k==="scale" || k==="cx"))).sort()).toString();
 }
-
-// The large layers of a pre-rendered disk page -- the modular tessellation, the tiling by Γ -- are files of their
-// own under pre/parts/, named by their content and shared by every page that draws them (wasm/parts.py); the page
-// holds an empty <g data-part> for each, filled here.  Each part is fetched once.
-const partText = new Map();
-function part(h) {
-  if (!partText.has(h)) partText.set(h, asset("pre/parts/" + h + ".svg", h).then(r => {
-    if (!r.ok) throw new Error("part " + h + ": " + r.status);
-    return r.text();
-  }).catch(e => { partText.delete(h); throw e; }));
-  return partText.get(h);
+for (const [q,file] of (window.fundomPre || [])) pre.set(preKey(q),file);
+async function compressed(file) {
+  const r = await fetch("./"+file);
+  if (!r.ok) throw new Error(`${file}: HTTP ${r.status}`);
+  return new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text();
 }
-function fillParts(root) {
-  return Promise.all([...root.querySelectorAll("g[data-part]")].map(async g => {
-    const h = g.getAttribute("data-part");
-    g.innerHTML = await part(h);                                  // parsed as SVG: the placeholder is an SVG element
-    g.removeAttribute("data-part");
-  }));
+function pageText(file) {
+  if (!preHtml.has(file)) preHtml.set(file,compressed(file).catch(e=>{preHtml.delete(file);throw e;}));
+  return preHtml.get(file);
 }
-for (const [q, file] of (window.fundomPre || [])) pre.set(preKey(q), file);
-
+let cataloguePromise;
+function catalogue() {
+  if (!cataloguePromise) cataloguePromise=compressed("static/catalog.json.gz").then(JSON.parse)
+    .catch(e=>{cataloguePromise=null;throw e;});
+  return cataloguePromise;
+}
+function displayName(r) {
+  let text=r.s||r.n;
+  for(const [from,to] of [["\\overline",""],["\\Gamma","Γ"],["\\cap","∩"],["\\pm","±"],
+    ["_0","₀"],["_1","₁"],["^0","⁰"],["^1","¹"],["^2","²"],["^3","³"],["\\,"," "],["\\ "," "]]) text=text.replaceAll(from,to);
+  return text;
+}
+function tableMenu(data, query) {
+  const p=new URLSearchParams(query), names={gen:"g",lev:"l",idx:"i"};
+  const fits=(r,except)=>Object.entries(names).every(([k,v])=>k===except || !p.get(k) || String(r[v])===p.get(k));
+  const matching=data.filter(r=>fits(r));
+  for(const [key,field] of Object.entries(names)) {
+    const select=document.querySelector(`select[name="${key}"]`);
+    if (!select) continue;
+    const values=[...new Set(data.filter(r=>fits(r,key)).map(r=>r[field]))].sort((a,b)=>a-b);
+    select.replaceChildren(new Option("any",""),...values.map(v=>new Option(v,String(v))));
+    select.value=p.get(key)||"";
+  }
+  const select=document.querySelector('select[name="db"]');
+  if (select) {
+    const selected=(p.get("db")||"").toUpperCase(), records=[...matching];
+    const outside=data.find(r=>r.n===selected && !fits(r));
+    if (outside) records.unshift(outside);
+    records.sort((a,b)=>a.g-b.g||a.l-b.l||a.i-b.i||a.n.localeCompare(b.n));
+    select.replaceChildren(new Option(matching.length?"group…":"no match",""),
+      ...records.map(r=>new Option(`${displayName(r)} · index ${r.i}, genus ${r.g}, level ${r.l}${r===outside?" · outside these filters":""}`,r.n)));
+    select.value=selected;
+    const count=select.closest("form").nextElementSibling;
+    count.textContent=Object.keys(names).some(k=>p.get(k))
+      ? `${matching.length} group${matching.length===1?"":"s"} match.`
+      : `${matching.length} groups: every congruence subgroup of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Each choice narrows the others.`;
+  }
+  // Filters describe the menu, not the group or its picture. Carry them
+  // through view changes, including forms generated without these filters.
+  for (const a of document.querySelectorAll('a[href^="?"]')) {
+    const target=new URLSearchParams(a.getAttribute("href").slice(1));
+    if (target.get("app")!=="2") continue;
+    for(const k of Object.keys(names)) {target.delete(k);if(p.get(k)) target.set(k,p.get(k));}
+    a.setAttribute("href","?"+target);
+  }
+  for(const form of document.querySelectorAll('form')) {
+    if(form.querySelector('input[name="app"]')?.value!=="2") continue;
+    for(const k of Object.keys(names)) {
+      if (form.querySelector(`[name="${k}"]`)) continue;
+      if(p.get(k)){const input=document.createElement("input");input.type="hidden";input.name=k;input.value=p.get(k);form.appendChild(input);}
+    }
+  }
+}
+// Upper-half-plane links are pinned to their fitted scale/centre by the
+// native renderer. Recognize those exact values; zoomed/panned views use SVG.
+function fitted(html, p) {
+  if (!p.has("scale") && !p.has("cx")) return true;
+  const m=html.match(/href="svg\?([^"]*)"/);
+  if (!m) return false;
+  const fit=new URLSearchParams(m[1].replaceAll("&amp;","&"));
+  return ["scale","cx"].every(k=>!p.has(k) || p.get(k)===(fit.get(k)||(k==="cx"?"0":"50")));
+}
+async function shipped(query) {
+  const key=preKey(query), p=new URLSearchParams(key), table=p.get("app")==="2";
+  const lookup=new URLSearchParams(p);
+  if(table) for(const k of ["gen","lev","idx"]) lookup.delete(k);
+  if(p.get("view")==="uhp") {lookup.delete("tile");lookup.delete("bg");}
+  let file=pre.get(lookup.toString());
+  if (!file && p.get("view")==="uhp") {
+    lookup.delete("scale");lookup.delete("cx");
+    file=pre.get(preKey(lookup.toString()));
+  }
+  if (!file && table && p.get("db")) {
+    const allowed=new Set(["app","db","view","tile","bg","scale","cx","gen","lev","idx"]);
+    if ([...p.keys()].some(k=>!allowed.has(k))) return null;
+    if (p.has("view") && p.get("view")!=="uhp") return null;
+    if (["tile","bg"].some(k=>p.has(k) && p.get(k)!=="0")) return null;
+    const data=await catalogue();
+    if (!data.some(r=>r.n===p.get("db"))) return null;
+    const v=p.get("view")==="uhp"?4:(p.get("tile")==="0"?1:0)+(p.get("bg")==="0"?2:0);
+    file=`static/tables/${p.get("db")}-${v}.html.gz`;
+  }
+  if (!file) return null;
+  const html=await pageText(file);
+  if(p.get("view")==="uhp" && !fitted(html,p)) return null;
+  return {html,table};
+}
+let revision=0;
+async function completePicture() {
+  const img=document.querySelector("#plot img");
+  if(img) {
+    const background=img.dataset.background;
+    await Promise.all([img.decode(),background ? new Promise((resolve,reject)=>{
+      const image=new Image();image.onload=resolve;image.onerror=reject;image.src="./"+background;
+    }) : Promise.resolve()]);
+  }
+}
 async function render(query) {
-  const file = pre.get(preKey(query));
-  if (file !== undefined) {
-    if (!preHtml.has(file)) preHtml.set(file, fetch("./" + file).then(r => r.text()));
-    show(await preHtml.get(file));
-    await fillParts(document.body);
+  const current=++revision;
+  const ready=await shipped(query);
+  if(current!==revision) return;
+  if(ready) {
+    show(ready.html);
+    // Disk background preferences have no effect on a half-plane picture,
+    // but should survive switching back to the disk.
+    const state=new URLSearchParams(query);
+    const inert=state.get("view")==="uhp"?["tile","bg"]:[];
+    if(["2","3"].includes(new URLSearchParams(preKey(query)).get("app"))) inert.push("g1","g2","n","m");
+    for(const key of inert) {
+      if(!state.has(key)) continue;
+      for(const a of document.querySelectorAll('a[href^="?"]')) {
+        const target=new URLSearchParams(a.getAttribute("href").slice(1));
+        target.set(key,state.get(key));a.setAttribute("href","?"+target);
+      }
+      for(const form of document.querySelectorAll('form')) {
+        let input=form.querySelector(`[name="${key}"]`);
+        if(!input) {input=document.createElement("input");input.type="hidden";input.name=key;form.appendChild(input);}
+        input.value=state.get(key);
+      }
+    }
+    await completePicture();
+    if(ready.table) {
+      const data=await catalogue();
+      if(current===revision) tableMenu(data,query);
+    }
     return;
   }
-  spinner();
-  await nextFrame();                   // let the spinner paint before the (synchronous) render
-  const [m] = await Promise.all([load(), tables()]);
-  const { record, summaries } = await inputs(query);
-  show(m.render(query.replace(/^\?/, ""), record, summaries));
+  spinner();await nextFrame();
+  const [m]=await Promise.all([load(),tables()]);
+  const {record,summaries}=await inputs(query);
+  if(current===revision) show(m.render(query.replace(/^\?/,""),record,summaries));
 }
 
 function go(query) {
+  const from=new URLSearchParams(location.search), to=new URLSearchParams(query);
+  if(to.get("view")==="uhp" && (from.get("view")!=="uhp" ||
+    ["n","m","g1","g2","db","gens"].some(k=>from.get(k)!==to.get(k)))) {
+    to.delete("scale");to.delete("cx");query="?"+to;
+  }
   history.pushState(null, "", query || "?");
   render(query).catch(fail);
 }
@@ -224,6 +337,6 @@ window.addEventListener("popstate", () => render(location.search).catch(fail));
 
 // Finish the initial view first. Warm the engine and tables concurrently at
 // low network priority while the visitor explores; actions reuse these promises.
-const initialView = preKey(location.search) !== preKey("")
-  ? render(location.search) : fillParts(document.body);
+const initialView = location.search !== ""
+  ? render(location.search) : completePicture();
 initialView.then(() => afterInitialView(() => Promise.all([load("low"), tables("low")]))).catch(fail);
