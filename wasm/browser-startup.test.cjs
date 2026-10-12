@@ -20,6 +20,21 @@ const base=process.env.FUNDOM_URL || 'http://localhost:8092/';
    await page.goto(base+q,{waitUntil:'domcontentloaded'});
    await page.waitForFunction(()=>{const i=document.querySelector('#plot img');return i?.complete&&i.naturalWidth>0&&!document.querySelector('#plot svg');});
   };
+  // Even the small browsing catalogue must not gate a selected picture.
+  let releaseCatalogue;
+  const pausedCatalogue=new Promise(r=>{releaseCatalogue=r;});
+  await page.route('**/static/catalog.json.gz',async r=>{await pausedCatalogue;await r.continue();});
+  await picture('?app=2&db=11A1');
+  assert.equal(await page.locator('.pills select:disabled').count(),4);
+  releaseCatalogue();await page.waitForFunction(()=>document.querySelector('select[name="db"]')?.options.length>8000);
+  await page.unroute('**/static/catalog.json.gz');
+  assert.equal(await page.locator('.pills select:disabled').count(),0);
+  await page.goto(base+'?app=2',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>document.querySelector('select[name="db"]')?.options.length>8000);
+  assert.equal(await page.locator('#plot img,#plot svg').count(),0);
+  console.log('Empty table browser uses the compact catalogue: PASS');
+  requests.length=0;
+  console.log('Selected table picture appears before the filter catalogue: PASS');
   for(const q of ['?n=3&scale=400', '', '?n=1', '?n=23&m=22', '?n=5&tile=0', '?n=5&bg=0', '?n=5&tile=0&bg=0', '?n=5&view=uhp', '?n=5&view=uhp&tile=0&bg=0',
     '?app=2&db=11A1','?app=2&db=11A1&g1=G1&n=5','?db=11A1&gen=1&lev=11&idx=12','?app=2&db=11A1&view=uhp']) {
     await picture(q);

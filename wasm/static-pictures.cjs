@@ -68,6 +68,7 @@ async function convert(html, dest, parts = false) {
     html = html.replace('<div id="plot">', `<div id="plot"><a class="btn" style="display:inline-block;margin-bottom:6px" href="?${explore.toString().replaceAll('&','&amp;')}">Explore triangles</a>`);
     html = html.replace('</style>', '.static-plot{display:block;max-width:100%;height:auto;border:1px solid #d7d7de;border-radius:6px;background:white}</style>');
     html = html.replace('Click a triangle for its matrix. In edit mode, click a yellow marker to redraw the triangle paired with that side there.', 'Choose triangle explorer for individual triangles and matrices, or edit mode to change side pairings.');
+    html = html.replace('Click a triangle to see its matrix and its side pairings.', 'Choose Explore triangles to see each matrix and its side pairings.');
     // The standard half-plane button should auto-fit, not inherit an irrelevant disk zoom.
     if (disk) {
       html = html.replace(/href="\?([^"]*)"/g, (all,q) => {
@@ -81,7 +82,9 @@ async function convert(html, dest, parts = false) {
   }
   // The persistent shell already has the stylesheet and math loader. Do not
   // repeat them in forty thousand fragments.
-  const body=html.match(/<body>([\s\S]*)<\/body>/)[1];
+  let body=html.match(/<body>([\s\S]*)<\/body>/)[1];
+  if(body.includes('<h2>Cummins–Pauli tables</h2>') && !body.includes('class="static-plot"'))
+    body=body.replace(/(<select\b[^>]*\bname="(?:gen|lev|idx|db)"[^>]*>)[\s\S]*?<\/select>/g,'$1<option value="">Loading…</option></select>');
   await fs.writeFile(path.join(web,dest), gzipSync('<!doctype html><title>Fundamental domains</title><body>'+body+'</body>',{level:9,mtime:0}));
   pages++;
   return html;

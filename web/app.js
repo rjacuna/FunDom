@@ -155,7 +155,7 @@ function preKey(query) {
 for (const [q,file] of (window.fundomPre || [])) pre.set(preKey(q),file);
 async function compressed(file) {
   const r = await fetch("./"+file);
-  if (!r.ok) throw new Error(`${file}: HTTP ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(`${file}: HTTP ${r.status}`),{status:r.status});
   return new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text();
 }
 function pageText(file) {
@@ -175,6 +175,7 @@ function displayName(r) {
   return text;
 }
 function tableMenu(data, query) {
+  for(const select of document.querySelectorAll('.pills select')) select.disabled=false;
   const p=new URLSearchParams(query), names={gen:"g",lev:"l",idx:"i"};
   const fits=(r,except)=>Object.entries(names).every(([k,v])=>k===except || !p.get(k) || String(r[v])===p.get(k));
   const matching=data.filter(r=>fits(r));
@@ -196,7 +197,7 @@ function tableMenu(data, query) {
     select.value=selected;
     const count=select.closest("form").nextElementSibling;
     count.textContent=Object.keys(names).some(k=>p.get(k))
-      ? `${matching.length} group${matching.length===1?"":"s"} match.`
+      ? `${matching.length} group${matching.length===1?" matches":"s match"}.`
       : `${matching.length} groups: every congruence subgroup of PSL₂(ℤ) of genus ≤ 24, up to conjugacy. Each choice narrows the others.`;
   }
   // Filters describe the menu, not the group or its picture. Carry them
@@ -209,6 +210,7 @@ function tableMenu(data, query) {
   }
   for(const form of document.querySelectorAll('form')) {
     if(form.querySelector('input[name="app"]')?.value!=="2") continue;
+    if(form.querySelector('input[name="db"]')) continue; // the by-name form starts without category filters
     for(const k of Object.keys(names)) {
       if (form.querySelector(`[name="${k}"]`)) continue;
       if(p.get(k)){const input=document.createElement("input");input.type="hidden";input.name=k;input.value=p.get(k);form.appendChild(input);}
@@ -229,7 +231,7 @@ async function shipped(query) {
   const lookup=new URLSearchParams(p);
   if(table) for(const k of ["gen","lev","idx"]) lookup.delete(k);
   if(p.get("view")==="uhp") {lookup.delete("tile");lookup.delete("bg");}
-  let file=pre.get(lookup.toString());
+  let file=pre.get(lookup.toString()), tableFile=false;
   if (!file && p.get("view")==="uhp") {
     lookup.delete("scale");lookup.delete("cx");
     file=pre.get(preKey(lookup.toString()));
@@ -239,13 +241,15 @@ async function shipped(query) {
     if ([...p.keys()].some(k=>!allowed.has(k))) return null;
     if (p.has("view") && p.get("view")!=="uhp") return null;
     if (["tile","bg"].some(k=>p.has(k) && p.get(k)!=="0")) return null;
-    const data=await catalogue();
-    if (!data.some(r=>r.n===p.get("db"))) return null;
+    if (!/^[0-9]+[A-Z]+[0-9]+$/.test(p.get("db"))) return null;
     const v=p.get("view")==="uhp"?4:(p.get("tile")==="0"?1:0)+(p.get("bg")==="0"?2:0);
     file=`static/tables/${p.get("db")}-${v}.html.gz`;
+    tableFile=true;
   }
   if (!file) return null;
-  const html=await pageText(file);
+  let html;
+  try {html=await pageText(file);}
+  catch(e) {if(tableFile && e.status===404) return null;throw e;}
   if(p.get("view")==="uhp" && !fitted(html,p)) return null;
   return {html,table};
 }
@@ -265,6 +269,14 @@ async function render(query) {
   if(current!==revision) return;
   if(ready) {
     show(ready.html);
+    for(const p of document.querySelectorAll('p.muted'))
+      if(p.textContent==="Click a triangle to see its matrix and its side pairings.")
+        p.textContent="Choose Explore triangles to see each matrix and its side pairings.";
+    if(ready.table) {
+      for(const select of document.querySelectorAll('.pills select')) select.disabled=true;
+      const count=document.querySelector('.pills')?.closest('form').nextElementSibling;
+      if(count) count.textContent="Loading table filters…";
+    }
     // Disk background preferences have no effect on a half-plane picture,
     // but should survive switching back to the disk.
     const state=new URLSearchParams(query);
@@ -284,8 +296,15 @@ async function render(query) {
     }
     await completePicture();
     if(ready.table) {
-      const data=await catalogue();
-      if(current===revision) tableMenu(data,query);
+      // A shipped picture needs neither the full mathematical tables nor
+      // the compact filter catalogue. Populate the menus after it appears.
+      catalogue().then(data=>{if(current===revision) tableMenu(data,query);}).catch(e=>{
+        if(current===revision) {
+          const count=document.querySelector('.pills')?.closest('form').nextElementSibling;
+          if(count) count.textContent="Table filters could not be loaded. Change view to retry.";
+        }
+        console.error(e);
+      });
     }
     return;
   }
@@ -339,4 +358,4 @@ window.addEventListener("popstate", () => render(location.search).catch(fail));
 // low network priority while the visitor explores; actions reuse these promises.
 const initialView = location.search !== ""
   ? render(location.search) : completePicture();
-initialView.then(() => afterInitialView(() => Promise.all([load("low"), tables("low")]))).catch(fail);
+initialView.then(() => afterInitialView(() => Promise.all([load("low"), tables("low"), catalogue()]))).catch(fail);

@@ -320,7 +320,7 @@ The native renderer and its exact geometry are unchanged. The intermediate
 SVG pages/parts are removed from the published bundle.
 
 `web/app.js` displays these pictures immediately and uses a compact shared
-catalogue for table filters. Selecting a shipped table group does not need
+catalogue for table filters, populated after the picture appears. Selecting a shipped table group does not need
 the full mathematical tables or WASM. Defaults, equivalent GET forms and
 the fitted upper-half-plane scale are recognized by the lookup. Explorer,
 editing, custom colours, zoom/pan and unshipped groups use the live SVG

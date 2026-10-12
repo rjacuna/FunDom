@@ -1,5 +1,7 @@
 // Do not download the default Γ picture when the URL requests another group.
 const prepare = html => {
+ html=html.replace('app.js?v=static-1','app.js?v=static-2')
+  .replace('Click a triangle to see its matrix and its side pairings.','Choose Explore triangles to see each matrix and its side pairings.');
  if(html.includes('data-initial-picture')) return html;
  const image=html.match(/<img class="static-plot"[^>]*>/)?.[0];
  if(!image) throw Error('Static shell has no default picture');
