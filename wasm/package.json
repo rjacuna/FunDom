@@ -1,0 +1,6 @@
+{
+  "name": "fundom-web-build",
+  "private": true,
+  "description": "Build-time rasterization of native FunDom plots",
+  "dependencies": { "sharp": "0.35.5" }
+}

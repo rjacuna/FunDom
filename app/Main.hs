@@ -87,6 +87,7 @@ main = do
     ["prequeries"]   -> mapM_ putStrLn prequeries
     -- render the pre-rendered pages numbered k mod m (all of them for 0 1) into a directory, the tables read once
     ["prerender", out, k, m] -> prerender dir out (read k) (read m)
+    ["static-tables", out] -> staticTables out
     _                -> hPutStr stderr usage >> exitFailure
   where
     pad n s = s ++ replicate (max 1 (n - length s)) ' '
@@ -119,6 +120,24 @@ prerender dir out k m = do
   forM_ [ (i, q) | (i, q) <- zip [0 :: Int ..] prequeries, i `mod` m == k ] $ \(i, q) -> do
     cx <- resolve dir (pure sms) (parseParams (parseQuery q))
     BL.writeFile (out </> (show i ++ ".html")) (toLazyByteString (renderPage cx))
+
+-- Build-time table renderer. Compact records avoid repeatedly scanning 114 MB
+-- of Magma data. Each worker reads its records from stdin, once. Browsing
+-- menus are populated from the shared JSON catalogue in the browser.
+staticTables :: FilePath -> IO ()
+staticTables out = do
+  createDirectoryIfMissing True out
+  rows <- lines <$> getContents
+  forM_ rows $ \row -> case parseCompact row of
+    Left err -> hPutStrLn stderr err >> exitFailure
+    Right r -> do
+      let p = defaultParams { pApp = 2, pDb = Just (rName r) }
+          cx = contextFrom p (Right r) ([summaryOf r], Options [] [] []) [] []
+      forM_ (zip [0 :: Int ..] (renderStandardViews cx)) $ \(i, html) ->
+        BL.writeFile (out </> (rName r ++ "-" ++ show i ++ ".html"))
+          (toLazyByteString html)
+      putStrLn (rName r)
+      hFlush stdout
 
 withParams :: FilePath -> String -> (Context -> IO ()) -> IO ()
 withParams dir q k = resolve dir (scanAll dir) (parseParams (parseQuery q)) >>= k

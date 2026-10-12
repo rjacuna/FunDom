@@ -22,7 +22,7 @@
 -- The view — upper half-plane or disk — and everything under "Show" are
 -- global to all three.
 module Render.Page
-  ( renderPage, renderSvgOnly, sceneFor
+  ( renderPage, renderStandardViews, renderSvgOnly, sceneFor
   ) where
 
 import Data.Array ((!))
@@ -336,7 +336,21 @@ units open close ts =
 -- 'String's, as they always were; the picture is a 'Builder' (see
 -- "Render.Svg"), and is not copied into one.
 renderPage :: Context -> Builder
-renderPage cx = nl
+renderPage cx = renderPageBuilt cx (build cx)
+
+-- Build-time catalogue: enumerate the subgroup once for its five views.
+-- Only view flags change; the subgroup and domain rearrangements stay fixed.
+renderStandardViews :: Context -> [Builder]
+renderStandardViews cx =
+  [ renderPageBuilt (cx {cxParams = v}) built | v <- views ]
+  where
+    p = cxParams cx
+    built = build cx
+    views = [p, p {pTile = False}, p {pBg = False},
+             p {pTile = False, pBg = False}, p {pView = UHP}]
+
+renderPageBuilt :: Context -> Either String Built -> Builder
+renderPageBuilt cx built = nl
   [ utf8 "<!doctype html>"
   , utf8 "<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
   , utf8 ("<title>Fundamental domains</title><style>" ++ css ++ "</style>")
@@ -353,8 +367,9 @@ renderPage cx = nl
     utf8 = stringUtf8
     nl bs = mconcat [ b <> char8 '\n' | b <- bs ]     -- as `unlines` made them
     p0    = cxParams cx
-    built = build cx
-    scene = sceneFor cx
+    scene = case pMode p0 of
+      TriMode -> Right (sceneTri p0)
+      DomainMode -> sceneDomain p0 <$> built
     -- the panels link with the view the picture was actually drawn at
     p = case scene of
       Right sc -> pinned p0 (scView sc)

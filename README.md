@@ -294,6 +294,7 @@ in C, no `hsc2hs`, so the identical source cross-compiles.
 
 ```sh
 ./wasm/build-flint-wasi.sh    # once: GMP 6.3.0, MPFR 4.2.2, FLINT 3.6.0 for wasm32-wasi, in ~/.cache/flintell/3.6.0/wasi
+npm ci --prefix wasm        # build-time rasterizer (sharp)
 ./wasm/build-web.sh           # web/fundom.wasm (3 MB after wasm-opt), web/fundom.js, web/csg.json
 python3 -m http.server -d web 8092
 ```
@@ -303,52 +304,42 @@ The shared package disables unavailable profiling, selects FLINT's MPFR/exact
 fallback for LLL certification, and fails explicitly if QSieve needs temporary
 files. See flintell's README for the WebAssembly limitations.
 
-**Speed.** The disk tilings are a megabyte or two of path data apiece. Two
-things make them bearable in the browser. The page is built as a
-`ByteString` builder rather than a `String` (a list of boxed characters, one
-per byte, which then had to be walked again to hand it to JavaScript): that
-halved the time, from 2.5 s to 1.2 s for Γ₀(11), and the browser itself takes
-55 ms to parse and insert the result, so what is left is the geometry. And
-the families are rendered at build time and shipped: Γ₀(N) ∩ Γ₀(M) for every
-1 ≤ N, M ≤ 23, and Γ₁(N) to level 6, Γ(N), Γ⁰(N), Γ¹(N) to 4, each in all
-five views — the half-plane, and the disk with and without the tiling by Γ
-and with and without the modular tessellation — beside the default page, the
-empty tables and generators pages and the worked examples. That is 2,721
-pages (`fundom prequeries` lists them; `fundom prerender DIR K M` renders
-every M-th of them from the K-th, and the build runs one such process per
-core, each reading the tables once: five and a half minutes on 18 cores).
+**Static pictures.** Standard views are rendered by the native FLINT program
+at build time and shipped as AVIF pictures. This covers Γ₀(N) ∩ Γ₀(M) for
+all 1 ≤ N, M ≤ 23, the small-level families and worked examples listed by
+`fundom prequeries`, and all 8,109 Cummins–Pauli table groups. Each group has
+five views: the upper half-plane and the disk with the Γ tiling and modular
+background independently switched on or off.
 
-Rendered whole they would come to 1.77 GB, over what GitHub Pages will
-serve. But most of each disk page is its two large layers, and those repeat:
-the modular tessellation is the same on every page, and the tiling by Γ is
-the same on every page that draws the same group in the same colours — both
-orders of Γ₀(N) ∩ Γ₀(M), every pair with the same least common multiple,
-every view that tiles. The SVG marks the two layers (`<!--part:tess-->`,
-`<!--part:tile-->`), and `wasm/parts.py` writes each one once to
-`web/pre/parts/`, named by a hash of its content, and leaves an empty
-`<g data-part>` in the page, which `web/app.js` fills from that file. There
-are 156 distinct parts, 123 MB; the pages themselves, panels and domain, come
-to 211 MB, 78 kB on average. Every file is served on its own and fetched
-only when needed: a visitor opening a page downloads that page, about 12 kB
-compressed, and its parts, the tessellation once for the whole visit and a
-tiling once per group. The shipped pages do not wait for WASM; their SVG parts download on demand.
-Any other page is computed after loading the calculation engine.
+`wasm/static-pictures.cjs` rasterizes the final tiling and domain together.
+The modular background is another static picture, shared by every disk
+view. Transparent pictures preserve the original layer composition and
+allow the background toggle to reuse the same domain/tiling image. Pictures
+are named by content; the panels are small gzip-compressed HTML files.
+The native renderer and its exact geometry are unchanged. The intermediate
+SVG pages/parts are removed from the published bundle.
 
-The page lookup ignores what does not change the page: parameters at their
-defaults (a form sends every field it holds, the module's own links leave
-the defaults out), and in the disk the half-plane's scale and centre, which
-the view buttons carry along for the way back.
+`web/app.js` displays these pictures immediately and uses a compact shared
+catalogue for table filters. Selecting a shipped table group does not need
+the full mathematical tables or WASM. Defaults, equivalent GET forms and
+the fitted upper-half-plane scale are recognized by the lookup. Explorer,
+editing, custom colours, zoom/pan and unshipped groups use the live SVG
+renderer. The “Explore triangles” link opens an interactive domain; the
+family mode's triangle explorer also remains available.
 
-`index.html` is the default page — the full modular group — pre-rendered
-by the native binary, so it is on screen before the module has downloaded;
-its parts are the same files as everyone else's. After the initial SVG parts have finished and the page has painted, an idle
-callback downloads the module and tables concurrently at low network priority.
-They become ready while the visitor explores, and actions share any downloads
-already in progress. A page that was not
-shipped waits for the module, with a spinner over the plot while it works.
-Successful WASM, table and content-addressed SVG downloads are retained in
-CacheStorage across visits; storage failures fall back to ordinary fetch.
-`wasm/asset-manifest.py` refreshes the binary/table cache keys after a build.
+After the initial picture and its background have loaded and the page has
+painted, an idle callback downloads WASM and the full tables concurrently
+at low priority. Actions reuse those downloads, and successful engine/table
+responses are retained in CacheStorage across visits. Storage failures
+fall back to ordinary fetch. `wasm/asset-manifest.py` refreshes their cache
+keys after a build. `web/static/coverage.json` records the generated coverage.
+
+To rebuild just the pages/pictures after changing the native renderer:
+
+```sh
+cabal build exe:fundom
+./wasm/build-web.sh pages
+```
 
 `app/Web.hs` exports `render`, `svg` and `identifyKey`, the first two taking the query
 string and — for the tables — one record and the summaries of one genus
@@ -356,8 +347,7 @@ in the compact formats of `Modular.CP`. `web/app.js` owns the URL: it
 intercepts the page's relative links and GET forms, calls the module, and
 puts the HTML on the page with `history.pushState`, so every state is
 still a shareable URL. The tables ship as `web/csg.json` (4.7 MB, 330 KB
-gzipped), exported by `fundom csg-export` and fetched the first time mode 2
-is used; JavaScript filters it and hands the module the pieces it needs.
+gzipped), exported by `fundom csg-export` and downloaded in the background after the initial view; JavaScript filters it and hands the module the pieces it needs.
 
 The site is published from the `gh-pages` branch, which holds the contents
 of `web/` after a build.
@@ -365,5 +355,6 @@ of `web/` after a build.
 Browser startup/cache regression checks (Playwright, local site running):
 
 ```
+node wasm/verify-static.cjs   # complete generated coverage and raster validity
 node wasm/browser-startup.test.cjs
 ```

@@ -42,14 +42,10 @@ wasm-opt -Os --enable-bulk-memory --enable-reference-types --enable-simd \
   "$OUT/fundom.wasm" -o "$OUT/fundom.wasm"
 fi
 
-# The tables and the pre-rendered pages, from the native binary.  web/pre/
-# holds the pages listed by `fundom prequeries` (the default page, the empty
-# tables and generators pages, the worked examples, the families in all five
-# views), which the app shows at once instead of computing them; index.html
-# is the default page itself, with the module script and the list of those
-# pages added.  The pages are rendered by $JOBS processes at once, each
-# reading the tables a single time; then wasm/parts.py takes the two large
-# layers out of every page into web/pre/parts/, one file per distinct layer.
+# Native geometry is rendered once at build time. parts.py deduplicates the
+# temporary SVG layers; static-pictures.cjs rasterizes the family/example
+# pages plus all table records, then removes the intermediate SVG pages.
+# Install its pinned image dependency with: npm ci --prefix wasm
 [ "${1:-}" = "wasm" ] && { python3 "$HERE/asset-manifest.py"; exit 0; }
 BIN="$(ls "$ROOT"/dist-newstyle/build/*/ghc-*/fundom-*/x/fundom/build/fundom/fundom 2>/dev/null | head -1)"
 if [ -n "$BIN" ]; then
@@ -60,7 +56,8 @@ if [ -n "$BIN" ]; then
   seq 0 $((JOBS - 1)) | (cd "$ROOT" && xargs -P "$JOBS" -I{} "$BIN" prerender "$OUT/pre" {} "$JOBS")
   (cd "$ROOT" && "$BIN" page '') | python3 "$HERE/shell.py" "$OUT/index.html" "$OUT/pre/list.tsv"
   python3 "$HERE/parts.py" "$OUT/pre/parts" "$OUT"/pre/*.html "$OUT/index.html"
+  FUNDOM_BIN="$BIN" FUNDOM_JOBS="$JOBS" UV_THREADPOOL_SIZE="$JOBS" node "$HERE/static-pictures.cjs"
 fi
-ls -la "$OUT" "$OUT/pre"
+ls -ld "$OUT" "$OUT/static"
 
 python3 "$HERE/asset-manifest.py"
