@@ -107,6 +107,9 @@ prequeries = nub $
   ++ [ toQuery defaultParams { pApp = 3, pGens = g } | (_, g) <- examples ]
   ++ [ toQuery (view (fam G0 n G0 m)) | n <- [1 .. 23], m <- [1 .. 23], view <- views ]
   ++ [ toQuery (view (fam t n G0 1)) | (t, ns) <- others, n <- ns, view <- views ]
+  -- Append these so the existing shipped page numbers remain stable.
+  ++ [ toQuery (view defaultParams { pApp = 3, pGens = g }) | (_, g) <- examples, view <- views ]
+  ++ [ toQuery (view defaultParams { pApp = app }) | app <- [2, 3], view <- views ]
   where
     views = [ id, \p -> p { pTile = False }, \p -> p { pBg = False }, \p -> p { pTile = False, pBg = False }, \p -> p { pView = UHP } ]
     others = [ (G1, [2 .. 6]), (Gfull, [2 .. 4]), (Gup0, [2 .. 4]), (Gup1, [2 .. 4]) ]

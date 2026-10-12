@@ -35,7 +35,7 @@ async function convert(html, dest, parts = false) {
   const match = html.match(/<svg\b[\s\S]*?<\/svg>/);
   if (match) {
     let svg = match[0];
-    if (parts) {
+    if (parts && svg.includes('data-part=')) {
       const first = (await fs.readFile(path.join(web,'pre/0.html'),'utf8')).match(/<g data-part="([^"]+)"><\/g>/);
       if (first) {
         const h = first[1], tess = await fs.readFile(path.join(web,'pre/parts',h+'.svg'),'utf8');

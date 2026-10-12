@@ -13,6 +13,12 @@ const web=path.resolve(__dirname,'../web'),dir=path.join(web,'static');
  }));
  for(let n=1;n<=23;n++)for(let m=1;m<=23;m++)for(const [view,tile,bg] of [['disk','1','1'],['disk','0','1'],['disk','1','0'],['disk','0','0'],['uhp','1','1']])
   assert.ok(family.has(['1','G0','G0',n,m,view,tile,bg].join('|')),`Missing N=${n},M=${m},${view},${tile},${bg}`);
+ const queries=manifest.map(([q])=>new URLSearchParams(q));
+ for(const gens of new Set(queries.filter(p=>p.get('app')==='3'&&p.get('gens')).map(p=>p.get('gens'))))
+  for(const [view,tile,bg] of [['disk','1','1'],['disk','0','1'],['disk','1','0'],['disk','0','0'],['uhp','1','1']])
+   assert.ok(queries.some(p=>p.get('gens')===gens&&(p.get('view')||'disk')===view&&(p.get('tile')||'1')===tile&&(p.get('bg')||'1')===bg),'Missing generator example view');
+ for(const app of ['2','3'])for(const [view,tile,bg] of [['disk','1','1'],['disk','0','1'],['disk','1','0'],['disk','0','0'],['uhp','1','1']])
+  assert.ok(queries.some(p=>p.get('app')===app&&!p.get('db')&&!p.get('gens')&&(p.get('view')||'disk')===view&&(p.get('tile')||'1')===tile&&(p.get('bg')||'1')===bg),'Missing empty browser view');
  const files=[...manifest.map(([,f])=>f),...catalog.flatMap(r=>Array.from({length:5},(_,v)=>`static/tables/${r.n}-${v}.html.gz`))];
  const pictures=new Set();let next=0;
  await Promise.all(Array.from({length:12},async()=>{

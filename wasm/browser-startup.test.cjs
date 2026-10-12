@@ -45,6 +45,11 @@ const base=process.env.FUNDOM_URL || 'http://localhost:8092/';
     }
   }
   await page.waitForFunction(()=>document.querySelector('select[name="db"]').options.length>100);
+  const manifest=JSON.parse(require('node:zlib').gunzipSync(require('node:fs').readFileSync(require('node:path').join(__dirname,'../web/static/manifest.json.gz'))));
+  for(const [q] of manifest.filter(([q])=>{const p=new URLSearchParams(q);return p.get('app')==='3'&&p.get('gens');})) await picture('?'+q);
+  // Return to a table entry for the filter/history checks below.
+  await picture('?app=2&db=11A1&view=uhp');
+  await page.waitForFunction(()=>document.querySelector('select[name="db"]').options.length>100);
   assert.equal(requests.filter(u=>/\.wasm|csg\.json|\.svg/.test(u)).length,0);
   console.log('Static families, disk variants, UHP and table records without WASM or SVG: PASS');
   await page.selectOption('select[name="gen"]','0');
