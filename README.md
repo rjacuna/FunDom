@@ -331,8 +331,8 @@ are 156 distinct parts, 123 MB; the pages themselves, panels and domain, come
 to 211 MB, 78 kB on average. Every file is served on its own and fetched
 only when needed: a visitor opening a page downloads that page, about 12 kB
 compressed, and its parts, the tessellation once for the whole visit and a
-tiling once per group. The shipped pages appear in about 40 ms; any other
-page is computed, in a second or so for a disk tiling.
+tiling once per group. The shipped pages do not wait for WASM; their SVG parts download on demand.
+Any other page is computed after loading the calculation engine.
 
 The page lookup ignores what does not change the page: parameters at their
 defaults (a form sends every field it holds, the module's own links leave
@@ -341,9 +341,12 @@ the view buttons carry along for the way back.
 
 `index.html` is the default page — the full modular group — pre-rendered
 by the native binary, so it is on screen before the module has downloaded;
-its parts are the same files as everyone else's. The module is compiled in
-the background meanwhile, streamed as it downloads; a page that was not
-shipped waits for it, with a spinner over the plot while it works.
+its parts are the same files as everyone else's. The module and tables are downloaded only when a page needs computation,
+so they do not compete with the visible SVG layers. A page that was not
+shipped waits for the module, with a spinner over the plot while it works.
+Successful WASM, table and content-addressed SVG downloads are retained in
+CacheStorage across visits; storage failures fall back to ordinary fetch.
+`wasm/asset-manifest.py` refreshes the binary/table cache keys after a build.
 
 `app/Web.hs` exports `render`, `svg` and `identifyKey`, the first two taking the query
 string and — for the tables — one record and the summaries of one genus
@@ -356,3 +359,9 @@ is used; JavaScript filters it and hands the module the pieces it needs.
 
 The site is published from the `gh-pages` branch, which holds the contents
 of `web/` after a build.
+
+Browser startup/cache regression checks (Playwright, local site running):
+
+```
+node wasm/browser-startup.test.cjs
+```

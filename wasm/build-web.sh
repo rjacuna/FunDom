@@ -50,7 +50,7 @@ fi
 # pages added.  The pages are rendered by $JOBS processes at once, each
 # reading the tables a single time; then wasm/parts.py takes the two large
 # layers out of every page into web/pre/parts/, one file per distinct layer.
-[ "${1:-}" = "wasm" ] && exit 0
+[ "${1:-}" = "wasm" ] && { python3 "$HERE/asset-manifest.py"; exit 0; }
 BIN="$(ls "$ROOT"/dist-newstyle/build/*/ghc-*/fundom-*/x/fundom/build/fundom/fundom 2>/dev/null | head -1)"
 if [ -n "$BIN" ]; then
   JOBS="${FUNDOM_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}"
@@ -62,3 +62,5 @@ if [ -n "$BIN" ]; then
   python3 "$HERE/parts.py" "$OUT/pre/parts" "$OUT"/pre/*.html "$OUT/index.html"
 fi
 ls -la "$OUT" "$OUT/pre"
+
+python3 "$HERE/asset-manifest.py"
