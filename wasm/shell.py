@@ -25,7 +25,7 @@ css = ('.plot-wait{display:flex;align-items:center;justify-content:center;max-wi
        'border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}')
 html = html.replace('</style>', css + '</style>', 1)
 html = html.replace('</body>', '<script>window.fundomPre=' + json.dumps(pre, ensure_ascii=False).replace('</', '<\\/') + '</script>\n'
-                    '<script type="module" src="./app.js?v=fast-start-1"></script>\n'
+                    '<script type="module" src="./app.js?v=background-1"></script>\n'
                     '<noscript><p style="padding:12px">This page needs JavaScript: the mathematics runs in your browser.</p></noscript>\n</body>', 1)
 open(sys.argv[1], 'w', encoding="utf-8").write(html)
 print("wrote", sys.argv[1], len(html), "bytes,", len(pre), "pre-rendered pages listed")

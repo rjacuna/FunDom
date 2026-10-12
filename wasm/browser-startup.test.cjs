@@ -4,7 +4,16 @@ const {chromium} = require('playwright');
 (async () => {
  const b = await chromium.launch(process.env.CHROME_PATH ? {executablePath: process.env.CHROME_PATH} : {});
  try {
-  const fc=await b.newContext();const f=await fc.newPage();const fr=[],fe=[];f.on('request',r=>fr.push(r.url()));f.on('pageerror',e=>fe.push(String(e)));
+  const fc=await b.newContext();await fc.addInitScript(() => {
+    window.__warmups = [];
+    window.requestIdleCallback = callback => { window.__warmups.push(callback); return window.__warmups.length; };
+    window.__fetches = [];
+    const original = window.fetch;
+    window.fetch = (input, options) => {
+      window.__fetches.push({url: String(input), priority: options?.priority});
+      return original(input, options);
+    };
+  });const f=await fc.newPage();const fr=[],fe=[];f.on('request',r=>fr.push(r.url()));f.on('pageerror',e=>fe.push(String(e)));
   await f.route('**/*.wasm*',r=>r.abort());await f.route('**/csg.json*',r=>r.abort());
   await f.goto((process.env.FUNDOM_URL || 'http://localhost:8092/') + '');await f.waitForFunction(()=>!document.querySelector('[data-part]'));
   await f.goto((process.env.FUNDOM_URL || (process.env.FUNDOM_URL || 'http://localhost:8092/') + '') + '?n=5');await f.waitForFunction(()=>document.querySelector('#plot svg')&&!document.querySelector('[data-part]'));
@@ -17,6 +26,6 @@ const {chromium} = require('playwright');
   await f.route('**/*.wasm*',r=>r.abort());await f.route('**/csg.json*',r=>r.abort());fr.length=0;
   await f.reload();await f.waitForFunction(()=>document.querySelector('#plot svg')&&document.body.innerText.includes('Γ₀(24) index 48')&&!document.querySelector('.plot-wait'),{},{timeout:30000});
   assert.equal(fr.filter(u=>u.includes('.wasm')||u.includes('csg.json')).length,0);assert.deepEqual(fe,[]);
-  console.log('FunDom: arbitrary n=24, persistent WASM/table cache PASS');await fc.close();
+  console.log('FunDom: automatic low-priority warmup, arbitrary n=24, persistent WASM/table cache PASS');await fc.close();
  } finally { await b.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

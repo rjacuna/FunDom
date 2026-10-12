@@ -341,8 +341,10 @@ the view buttons carry along for the way back.
 
 `index.html` is the default page — the full modular group — pre-rendered
 by the native binary, so it is on screen before the module has downloaded;
-its parts are the same files as everyone else's. The module and tables are downloaded only when a page needs computation,
-so they do not compete with the visible SVG layers. A page that was not
+its parts are the same files as everyone else's. After the initial SVG parts have finished and the page has painted, an idle
+callback downloads the module and tables concurrently at low network priority.
+They become ready while the visitor explores, and actions share any downloads
+already in progress. A page that was not
 shipped waits for the module, with a spinner over the plot while it works.
 Successful WASM, table and content-addressed SVG downloads are retained in
 CacheStorage across visits; storage failures fall back to ordinary fetch.
