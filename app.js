@@ -7,21 +7,24 @@
 // Every link and form the Haskell renders is relative and stateless, so this
 // is just interception plus history.pushState.
 import { wasiImports } from "./wasi-shim.js";
+import { asset } from "./assets.js";
 
 let hs = null;
 let csg = null;
 
 async function load() {
   if (hs) return hs;
-  if (!loading) loading = instantiate();
+  if (!loading) loading = instantiate().catch(e => { loading = null; throw e; });
   return loading;
 }
 let loading = null;
 async function instantiate() {
   // compiled as it downloads when the server says application/wasm, else after
-  const mod = WebAssembly.compileStreaming
-    ? await WebAssembly.compileStreaming(fetch("./fundom.wasm")).catch(async () => WebAssembly.compile(await (await fetch("./fundom.wasm")).arrayBuffer()))
-    : await WebAssembly.compile(await (await fetch("./fundom.wasm")).arrayBuffer());
+  const response = await asset("fundom.wasm");
+  if (!response.ok) throw new Error(`calculation engine download: HTTP ${response.status}`);
+  const mod = WebAssembly.compileStreaming && response.headers.get("Content-Type")?.split(";")[0] === "application/wasm"
+    ? await WebAssembly.compileStreaming(response)
+    : await WebAssembly.compile(await response.arrayBuffer());
   const { wasi, setMemory } = wasiImports(mod);
   const { default: ghcJsffi } = await import("./fundom.js");
   const jsffi = {};
@@ -40,7 +43,10 @@ async function instantiate() {
 // first time mode 2 is used.
 async function tables() {
   if (csg) return csg;
-  csg = await (await fetch("./csg.json")).json();
+  csg = asset("csg.json").then(r => {
+    if (!r.ok) throw new Error(`tables download: HTTP ${r.status}`);
+    return r.json();
+  }).catch(e => { csg = null; throw e; });
   return csg;
 }
 
@@ -151,10 +157,10 @@ function preKey(query) {                                        // an empty valu
 // holds an empty <g data-part> for each, filled here.  Each part is fetched once.
 const partText = new Map();
 function part(h) {
-  if (!partText.has(h)) partText.set(h, fetch("./pre/parts/" + h + ".svg").then(r => {
+  if (!partText.has(h)) partText.set(h, asset("pre/parts/" + h + ".svg", h).then(r => {
     if (!r.ok) throw new Error("part " + h + ": " + r.status);
     return r.text();
-  }));
+  }).catch(e => { partText.delete(h); throw e; }));
   return partText.get(h);
 }
 function fillParts(root) {
@@ -176,7 +182,7 @@ async function render(query) {
   }
   spinner();
   await nextFrame();                   // let the spinner paint before the (synchronous) render
-  const m = await load();
+  const [m] = await Promise.all([load(), tables()]);
   const { record, summaries } = await inputs(query);
   show(m.render(query.replace(/^\?/, ""), record, summaries));
 }
@@ -187,7 +193,7 @@ function go(query) {
 }
 
 async function openSvg(query) {
-  const m = await load();
+  const [m] = await Promise.all([load(), tables()]);
   const { record, summaries } = await inputs(query);
   const svg = m.svg(query.replace(/^\?/, ""), record, summaries);
   window.open(URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })), "_blank");
@@ -217,8 +223,7 @@ document.addEventListener("submit", ev => {
 window.addEventListener("popstate", () => render(location.search).catch(fail));
 
 // The shell is the default page itself; anything else is rendered now.  The
-// module and the tables load in the background meanwhile, for the first
-// page that needs them.
+// module and tables load only for a page that needs them; downloading them
+// here would compete with the visible SVG layers on a slow connection.
 if (preKey(location.search) !== preKey("")) render(location.search).catch(fail);
 else fillParts(document.body).catch(fail);
-load().then(tables).catch(() => {});
