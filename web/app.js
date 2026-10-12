@@ -337,6 +337,6 @@ window.addEventListener("popstate", () => render(location.search).catch(fail));
 
 // Finish the initial view first. Warm the engine and tables concurrently at
 // low network priority while the visitor explores; actions reuse these promises.
-const initialView = preKey(location.search) !== preKey("")
+const initialView = location.search !== ""
   ? render(location.search) : completePicture();
 initialView.then(() => afterInitialView(() => Promise.all([load("low"), tables("low")]))).catch(fail);

@@ -133,6 +133,7 @@ async function tableWorker(records, id) {
   index=await convert(index,'static/default.html.gz',true);
   index=index.replace(/window\.fundomPre=[\s\S]*?<\/script>/,'window.fundomPre='+JSON.stringify(manifest).replaceAll('</','<\\/')+'</script>');
   index=index.replace('app.js?v=background-1','app.js?v=static-1');
+  index=require('./static-shell.cjs')(index);
   await fs.writeFile(path.join(web,'index.html'),index);
   console.log(`Family views ready: ${pages} pages, ${images} distinct pictures. Building ${records.length} table groups.`);
   const progress=setInterval(()=>console.log(`${pages} pages / ${images} distinct pictures`),30000);

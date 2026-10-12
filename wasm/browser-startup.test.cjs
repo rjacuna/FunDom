@@ -20,8 +20,15 @@ const base=process.env.FUNDOM_URL || 'http://localhost:8092/';
    await page.goto(base+q,{waitUntil:'domcontentloaded'});
    await page.waitForFunction(()=>{const i=document.querySelector('#plot img');return i?.complete&&i.naturalWidth>0&&!document.querySelector('#plot svg');});
   };
-  for(const q of ['', '?n=3&scale=400', '?n=23&m=22', '?n=5&tile=0', '?n=5&bg=0', '?n=5&tile=0&bg=0', '?n=5&view=uhp', '?n=5&view=uhp&tile=0&bg=0',
-    '?app=2&db=11A1','?app=2&db=11A1&g1=G1&n=5','?db=11A1&gen=1&lev=11&idx=12','?app=2&db=11A1&view=uhp']) await picture(q);
+  for(const q of ['?n=3&scale=400', '', '?n=1', '?n=23&m=22', '?n=5&tile=0', '?n=5&bg=0', '?n=5&tile=0&bg=0', '?n=5&view=uhp', '?n=5&view=uhp&tile=0&bg=0',
+    '?app=2&db=11A1','?app=2&db=11A1&g1=G1&n=5','?db=11A1&gen=1&lev=11&idx=12','?app=2&db=11A1&view=uhp']) {
+    await picture(q);
+    if(q==='?n=3&scale=400') {
+      const html=require('node:fs').readFileSync(require('node:path').join(__dirname,'../web/index.html'),'utf8');
+      const defaultPicture=html.match(/data-src="\.\/([^"]+)"/)[1];
+      assert.ok(!requests.some(u=>u.endsWith(defaultPicture)),'A deep link downloaded the unused default picture');
+    }
+  }
   await page.waitForFunction(()=>document.querySelector('select[name="db"]').options.length>100);
   assert.equal(requests.filter(u=>/\.wasm|csg\.json|\.svg/.test(u)).length,0);
   console.log('Static families, disk variants, UHP and table records without WASM or SVG: PASS');
