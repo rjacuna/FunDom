@@ -7,20 +7,20 @@
 // Every link and form the Haskell renders is relative and stateless, so this
 // is just interception plus history.pushState.
 import { wasiImports } from "./wasi-shim.js";
-import { asset } from "./assets.js";
+import { asset, afterInitialView } from "./assets.js?v=background-1";
 
 let hs = null;
 let csg = null;
 
-async function load() {
+async function load(priority = "auto") {
   if (hs) return hs;
-  if (!loading) loading = instantiate().catch(e => { loading = null; throw e; });
+  if (!loading) loading = instantiate(priority).catch(e => { loading = null; throw e; });
   return loading;
 }
 let loading = null;
-async function instantiate() {
+async function instantiate(priority) {
   // compiled as it downloads when the server says application/wasm, else after
-  const response = await asset("fundom.wasm");
+  const response = await asset("fundom.wasm", undefined, priority);
   if (!response.ok) throw new Error(`calculation engine download: HTTP ${response.status}`);
   const mod = WebAssembly.compileStreaming && response.headers.get("Content-Type")?.split(";")[0] === "application/wasm"
     ? await WebAssembly.compileStreaming(response)
@@ -41,9 +41,9 @@ async function instantiate() {
 
 // The Cummins–Pauli tables, exported by `fundom csg-export`; fetched the
 // first time mode 2 is used.
-async function tables() {
+async function tables(priority = "auto") {
   if (csg) return csg;
-  csg = asset("csg.json").then(r => {
+  csg = asset("csg.json", undefined, priority).then(r => {
     if (!r.ok) throw new Error(`tables download: HTTP ${r.status}`);
     return r.json();
   }).catch(e => { csg = null; throw e; });
@@ -222,8 +222,8 @@ document.addEventListener("submit", ev => {
 
 window.addEventListener("popstate", () => render(location.search).catch(fail));
 
-// The shell is the default page itself; anything else is rendered now.  The
-// module and tables load only for a page that needs them; downloading them
-// here would compete with the visible SVG layers on a slow connection.
-if (preKey(location.search) !== preKey("")) render(location.search).catch(fail);
-else fillParts(document.body).catch(fail);
+// Finish the initial view first. Warm the engine and tables concurrently at
+// low network priority while the visitor explores; actions reuse these promises.
+const initialView = preKey(location.search) !== preKey("")
+  ? render(location.search) : fillParts(document.body);
+initialView.then(() => afterInitialView(() => Promise.all([load("low"), tables("low")]))).catch(fail);
